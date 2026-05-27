@@ -1,0 +1,131 @@
+﻿using Edi.Core.Controllers;
+using Edi.Core.Controllers.Parameters;
+using Edi.Core.Gallery;
+using Edi.Core.Services;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.OpenApi.Models;
+using System.IO;
+using System.Net;
+
+namespace Edi.Core
+{
+    public static class ApiBuilder
+    {
+
+        public static WebApplication BuildApi(ConfigurationManager config, IEdi edi)
+        {
+            var uploadPath = Path.Combine(Edi.OutputDir, "Upload");
+            Directory.CreateDirectory(uploadPath);
+
+            var builder = WebApplication.CreateBuilder();
+
+            var useHttps = config.Get<EdiConfig>().UseHttps;
+
+            // Prefer 5000 (what game clients expect), but if it's taken (another EDI, a game
+            // launcher, a Logitech G HUB applet, etc.) fall back to the next free port so EDI still
+            // starts cleanly instead of the whole host failing and taking the UI down with it.
+            int port = FirstFreePort(5000, 5050);
+
+            builder.WebHost.ConfigureKestrel(serverOptions =>
+            {
+                serverOptions.Listen(IPAddress.Loopback, port);
+                if (useHttps)
+                    serverOptions.Listen(IPAddress.Loopback, port + 1, listenOptions =>
+                        listenOptions.UseHttps("certificate.pfx", "password"));
+            });
+
+
+            var services = builder.Services;
+            services.AddSingleton(config);
+            services.AddSingleton(edi);
+
+            //services.AddControllersWithViews();
+            services.AddControllers().AddApplicationPart(typeof(EdiController).Assembly);
+            services.AddSwaggerGen(c =>
+            {
+                c.SwaggerDoc("v1", new OpenApiInfo { Title = "Edi Rest", Version = "v1" });
+                c.OperationFilter<SwaggerChannelsParameterOperationFilter>();
+                c.EnableAnnotations(); // Enable Swagger annotations for summaries and descriptions
+            });
+
+
+            services.AddCors(options =>
+            {
+                options.AddPolicy("AllowSpecificOrigin",
+                    builder => builder.AllowAnyOrigin()
+                                      .AllowAnyMethod()
+                                      .AllowAnyHeader());
+            });
+            var app = builder.Build();
+
+            var galleryPath = new DirectoryInfo(config.Get<GalleryConfig>().GalleryPath).FullName;
+
+
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
+            {
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "Edi Rest v1");
+                c.RoutePrefix = "swagger"; // Esto hace que sea accesible desde /swagger
+            });
+
+            app.UseCors("AllowSpecificOrigin");
+            app.UseRouting();
+
+            app.MapControllers();
+            app.UseFiles();
+            return app;
+        }
+
+
+
+
+
+        // First loopback TCP port in [start, end] that isn't already bound; falls back to `start`.
+        private static int FirstFreePort(int start, int end)
+        {
+            for (int p = start; p <= end; p++)
+            {
+                try
+                {
+                    var l = new System.Net.Sockets.TcpListener(IPAddress.Loopback, p);
+                    l.Start();
+                    l.Stop();
+                    return p;
+                }
+                catch { }
+            }
+            return start;
+        }
+
+        public static void UseFiles(this WebApplication app)
+        {
+
+            var galleryPath = app.Services.GetService<ConfigurationManager>().Get<GalleryConfig>().GalleryPath;
+
+            if (!new DirectoryInfo(galleryPath).Exists)
+            {
+                throw new DirectoryNotFoundException($"Gallery path '{galleryPath}' does not exist.");
+            }
+
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(new DirectoryInfo(galleryPath).FullName),
+                RequestPath = "/Edi/Assets",
+                ServeUnknownFileTypes = true,
+                ContentTypeProvider = new FileExtensionContentTypeProvider(new Dictionary<string, string>() { { ".funscript", "application/json" } })
+            });
+
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(Path.Combine(Edi.OutputDir, "Upload")),
+                RequestPath = "/Edi/Upload",
+                ServeUnknownFileTypes = true,
+                ContentTypeProvider = new FileExtensionContentTypeProvider(new Dictionary<string, string>() { { ".funscript", "application/json" } })
+            });
+        }
+    }
+}

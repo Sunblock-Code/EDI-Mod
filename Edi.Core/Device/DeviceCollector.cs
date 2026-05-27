@@ -1,0 +1,100 @@
+﻿using Edi.Core.Device.Interfaces;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using PropertyChanged;
+using System;
+using System.Threading.Channels;
+using ConfigurationManager = Edi.Core.Services.ConfigurationManager;
+
+namespace Edi.Core.Device
+{
+
+    [AddINotifyPropertyChangedInterface]
+    public class DeviceCollector(ConfigurationManager configuration, IServiceProvider serviceProvider)
+    {
+        public List<IDeviceProvider> Providers { get; set; } = new List<IDeviceProvider>();
+        public async Task Init()
+        {
+            if (!Providers.Any() && serviceProvider != null)
+            {
+                var sProviders = serviceProvider.GetServices<IDeviceProvider>();
+                Providers.AddRange(sProviders);
+            }
+
+            Providers.AsParallel().ForAll(async x => await x.Init());
+        }
+
+        public List<IDevice> Devices { get; set; } = new List<IDevice>();
+        public delegate void OnUnloadDeviceHandler(IDevice device, List<IDevice> devices);
+        public delegate void OnloadDeviceHandler(IDevice device, List<IDevice> devices);
+        public event OnUnloadDeviceHandler OnUnloadDevice;
+        public event OnloadDeviceHandler OnloadDevice;
+        public void LoadDevice(IDevice device)
+        {
+
+            DevicesConfig Config = configuration.Get<DevicesConfig>();
+            EdiConfig ediConfig = configuration.Get<EdiConfig>();
+            var replaced = new List<IDevice>();
+            lock (Devices)
+            {
+                // Remove the exact-name match AND any "Name (N)" sibling left over
+                // from earlier sessions where this device was renamed instead of
+                // replaced. Prevents drift like "Handy [X]", "Handy [X] (1)", "(2)"
+                // from accumulating across reconnects / game switches.
+                var basePattern = new System.Text.RegularExpressions.Regex(
+                    "^" + System.Text.RegularExpressions.Regex.Escape(device.Name) + @"(\s+\(\d+\))?$");
+                foreach (var d in Devices.Where(x => basePattern.IsMatch(x.Name)).ToList())
+                {
+                    Devices.Remove(d);
+                    replaced.Add(d);
+                }
+                UniqueName(device);
+                Devices.Add(device);
+                Config.Devices.TryAdd(device.Name, new DeviceConfig());
+            }
+            foreach (var d in replaced)
+            {
+                OnUnloadDevice?.Invoke(d, Devices);
+            }
+
+            var deviceConfig = Config.Devices[device.Name];
+
+            deviceConfig.Variant = device.Variants.Contains(deviceConfig.Variant)  && deviceConfig.Variant != "None"
+                                    ? deviceConfig.Variant
+                                    : device.DefaultVariant();
+
+            (device as IRange)?.SetRange(deviceConfig);
+            device.SelectedVariant = deviceConfig.Variant;
+            device.Channel = deviceConfig.Channel;
+
+            if (string.IsNullOrEmpty(device.Channel) && ediConfig.UseChannels)
+                device.Channel = ediConfig.Channels.FirstOrDefault();
+
+            configuration.Save(Config);
+            OnloadDevice?.Invoke(device, Devices);
+        }
+
+        private void UniqueName(IDevice device)
+        {
+            var c = 0;
+            var NewName = device.Name;
+            while (Devices.Any(x => x.Name == NewName))
+            {
+                c++;
+                NewName = $"{device.Name} ({c})";
+            }
+            device.Name = NewName;
+        }
+
+        public void UnloadDevice(IDevice device)
+        {
+            lock (Devices)
+            {
+                Devices.RemoveAll(x => x.Name == device.Name);
+
+            }
+            OnUnloadDevice?.Invoke(device, Devices);
+        }
+    }
+
+}

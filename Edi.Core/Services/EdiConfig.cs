@@ -1,0 +1,24 @@
+﻿using Edi.Core.Services;
+using PropertyChanged;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Edi.Core
+{
+    [AddINotifyPropertyChangedInterface]
+    [GameConfig]
+    public class EdiConfig
+    {
+        public bool Filler { get; set; } = true;
+        public bool Gallery { get; set; } = true;
+        public bool Reactive { get; set; } = true;
+        public bool UseChannels { get; set; } = false;
+        public IEnumerable<string> Channels { get; set; } = [];
+        public string ExecuteOnReady { get; set; } = "";
+        public bool UseHttps { get; set; } = false;
+        public bool UseLogs { get; set; } = false;
+    }
+}
