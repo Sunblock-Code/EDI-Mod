@@ -9,6 +9,7 @@ All notable changes made by this mod are listed here. This is a community mod of
 - **VIBRATION bar redesigned** as an additive vibration **overlay** (default 0%): adds extra buzz on top of the playing script for vibrating / oscillating devices, instead of scaling their output range.
 - **INTENSITY** now scales every device's output range — it's the master output level for all device types (not just stroke devices).
 - Intensity/Vibration values are now applied whenever a device connects, so a device joining mid-session immediately honors the bar settings (no need to nudge a slider).
+- **Log panel: current entry redesigned** as a distinctive **tag shape** (squared-left, rounded-right corners) with a pink gradient + soft glow, a glowing pulse dot, and a `● LIVE` badge at the right tip — older entries stay dim so the live one really stands out.
 
 ### Added
 - **Playback graph buzz overlay** — when the Vibration bar is raised, the funscript line shows a high-frequency ripple along its length and the live dot jitters at the buzz rate, so the added vibration is visible right on the preview.
