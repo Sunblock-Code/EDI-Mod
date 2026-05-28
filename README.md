@@ -21,6 +21,22 @@ For the full description of EDI's engine, gallery system, variants, multi-axis /
 
 ---
 
+## Screenshots
+
+**Full interface**
+
+![EDI Community Mod — full interface](docs/screenshot-overview.png)
+
+**Cover-art game library**
+
+![Cover-art game library](docs/screenshot-library.png)
+
+**Live funscript preview**
+
+![Live funscript preview](docs/screenshot-preview.png)
+
+---
+
 ## Requirements
 
 - **Windows 10/11 (x64)**
