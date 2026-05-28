@@ -24,6 +24,10 @@ namespace Edi.Core.Device.Buttplug
         // separate "Vibration" intensity bar to just these devices.
         public bool IsVibration => Actuator is ActuatorType.Vibrate or ActuatorType.Oscillate;
 
+        // Live "extra vibration" overlay (0..1) added on top of the scripted strength for vibrating /
+        // oscillating actuators, driven by the UI Vibration bar. 0 = no change (just plays the script).
+        public double VibrationOverlay01 { get; set; } = 0;
+
         private CmdLinear _currentCmd;
 
         public CmdLinear CurrentCmd
@@ -215,6 +219,10 @@ namespace Edi.Core.Device.Buttplug
 
             var speed = (int)Math.Round(currVal / vibroSteps) * vibroSteps;
             speed = Math.Min(1.0, Math.Max(0, speed / 100));
+
+            // Add the live Vibration-bar overlay on top of the scripted strength (buzz layered on the script).
+            if (IsVibration && VibrationOverlay01 > 0)
+                speed = Math.Min(1.0, Math.Max(0, speed + VibrationOverlay01));
 
             // Calculate the time until the next change.
             // We assume the time until the next change is proportional to the distance to the next vibroStep.

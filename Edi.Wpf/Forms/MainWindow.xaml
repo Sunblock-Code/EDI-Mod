@@ -1599,8 +1599,8 @@
                                            Foreground="{DynamicResource App.AccentAlt}" FontWeight="Bold" FontSize="13"/>
                             </StackPanel>
                             <Slider Grid.Column="1" x:Name="sliderVibration" Style="{StaticResource IntensitySlider}"
-                                    Value="100" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="Vibration_ValueChanged"
-                                    ToolTip="Vibration strength for vibrating / oscillating devices. Click or drag the handle.">
+                                    Value="0" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="Vibration_ValueChanged"
+                                    ToolTip="Vibration strength for vibrating / oscillating devices (starts at 0). Click or drag the handle.">
                                 <Slider.Foreground>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
                                         <GradientStop Color="#00A6B8" Offset="0"/>

@@ -30,7 +30,13 @@ namespace Edi.Forms
         private FunscriptGallery? _lastGallery;   // kept so the line can stay frozen while paused/stopped
         private double _drawnW, _drawnH;
         private int _drawnMin, _drawnMax = 100;   // last range the line was drawn at (for Live-Edit rescaling)
+        private double _drawnVib;                  // last vibration-overlay amount the line was drawn at
         private bool _hooked;
+
+        // Live "Vibration" overlay amount (0-100) from the UI bar: draws a high-frequency buzz on top of
+        // the funscript line and jitters the live dot, so the added vibration is visible on playback.
+        public double VibrationAmount { get; set; }
+        private readonly Stopwatch _vibClock = Stopwatch.StartNew();
 
         // Demo / test mode: animates a synthetic funscript on its own clock so the visualizer can
         // be exercised with no device connected and nothing playing. Lives entirely in the control.
@@ -112,9 +118,10 @@ namespace Edi.Forms
             }
             if (w < 4 || h < 4) return;
 
-            // Live Edit (Intensity/Vibration) drives the device's output range; mirror it so the
-            // drawn line + dot scale exactly like the toy's real output.
+            // Live Edit (Intensity) drives the device's output range; mirror it so the drawn line + dot
+            // scale like the toy's real output. Vibration adds a buzz overlay (ripple + dot jitter below).
             int dMin = dev.Min, dMax = dev.Max;
+            double vib = VibrationAmount;
 
             var gallery = dev.CurrentGallery;
             bool playing = gallery != null && gallery.Duration > 0 && gallery.Commands != null && gallery.Commands.Count > 0;
@@ -126,11 +133,11 @@ namespace Edi.Forms
                 if (_lastGallery != null)
                 {
                     lblEmpty.Visibility = Visibility.Collapsed;
-                    if (w != _drawnW || h != _drawnH || dMin != _drawnMin || dMax != _drawnMax)
+                    if (w != _drawnW || h != _drawnH || dMin != _drawnMin || dMax != _drawnMax || vib != _drawnVib)
                     {
                         RebuildGrid(w, h);
-                        RebuildLine(_lastGallery, w, h, dMin, dMax);
-                        _drawnW = w; _drawnH = h; _drawnMin = dMin; _drawnMax = dMax;
+                        RebuildLine(_lastGallery, w, h, dMin, dMax, vib);
+                        _drawnW = w; _drawnH = h; _drawnMin = dMin; _drawnMax = dMax; _drawnVib = vib;
                     }
                     return;   // leave playhead + dot frozen at their last spot
                 }
@@ -146,11 +153,11 @@ namespace Edi.Forms
             _lastGallery = gallery;
 
             bool swap = !ReferenceEquals(gallery, _drawnGallery);
-            if (swap || w != _drawnW || h != _drawnH || dMin != _drawnMin || dMax != _drawnMax)
+            if (swap || w != _drawnW || h != _drawnH || dMin != _drawnMin || dMax != _drawnMax || vib != _drawnVib)
             {
                 RebuildGrid(w, h);
-                RebuildLine(gallery!, w, h, dMin, dMax);
-                _drawnGallery = gallery; _drawnW = w; _drawnH = h; _drawnMin = dMin; _drawnMax = dMax;
+                RebuildLine(gallery!, w, h, dMin, dMax, vib);
+                _drawnGallery = gallery; _drawnW = w; _drawnH = h; _drawnMin = dMin; _drawnMax = dMax; _drawnVib = vib;
                 lblName.Text = gallery!.Name ?? "";
                 if (swap)
                     nameChip.BeginAnimation(OpacityProperty, new DoubleAnimation(0.2, 1.0, TimeSpan.FromMilliseconds(350)));
@@ -162,6 +169,13 @@ namespace Edi.Forms
             playhead.Visibility = Visibility.Visible;
 
             double y = (1 - Math.Clamp(dev.ProgressValue, 0, 100) / 100.0) * h;
+            if (vib > 0.5)
+            {
+                // Jitter the live dot to show the added vibration buzz on top of the script position.
+                double amp = (vib / 100.0) * h * 0.07;
+                y += amp * Math.Sin(_vibClock.Elapsed.TotalSeconds * (2 * Math.PI) * 24);
+                y = Math.Clamp(y, 0, h);
+            }
             Canvas.SetLeft(dot, x - dot.Width / 2);
             Canvas.SetTop(dot, y - dot.Height / 2);
             dot.Visibility = Visibility.Visible;
@@ -190,14 +204,14 @@ namespace Edi.Forms
             playhead.Y1 = 0; playhead.Y2 = h;
             playhead.Visibility = Visibility.Visible;
 
-            double y = (1 - Math.Clamp(DemoValueAt(g, t), 0, 100) / 100.0) * h;
+            double y = (1 - Math.Clamp(ValueAt(g, t), 0, 100) / 100.0) * h;
             Canvas.SetLeft(dot, x - dot.Width / 2);
             Canvas.SetTop(dot, y - dot.Height / 2);
             dot.Visibility = Visibility.Visible;
         }
 
         // Value of the synthetic script at time t (linear interp between commands == rides the line).
-        private static double DemoValueAt(FunscriptGallery g, int t)
+        private static double ValueAt(FunscriptGallery g, int t)
         {
             var cmds = g.Commands;
             if (cmds == null || cmds.Count == 0) return 0;
@@ -240,7 +254,7 @@ namespace Edi.Forms
 
         // dMin/dMax = the device's live output range (set by the Intensity/Vibration bars). Each script
         // value 0-100 is mapped into [dMin,dMax] so the line shows the toy's actual stroke depth.
-        private void RebuildLine(FunscriptGallery g, double w, double h, int dMin = 0, int dMax = 100)
+        private void RebuildLine(FunscriptGallery g, double w, double h, int dMin = 0, int dMax = 100, double vib = 0)
         {
             linePoly.Points.Clear();
             var cmds = g.Commands;
@@ -248,12 +262,32 @@ namespace Edi.Forms
 
             double Scale(double v) => dMin + (dMax - dMin) * (Math.Clamp(v, 0, 100) / 100.0);
 
-            linePoly.Points.Add(new Point(0, (1 - Scale(cmds[0].InitialValue) / 100.0) * h));
-            foreach (var cmd in cmds)
+            if (vib <= 0.5)
             {
-                double x = Math.Clamp(cmd.AbsoluteTime / (double)g.Duration, 0, 1) * w;
-                double y = (1 - Scale(cmd.Value) / 100.0) * h;
-                linePoly.Points.Add(new Point(x, y));
+                // Clean funscript curve (plot the command points).
+                linePoly.Points.Add(new Point(0, (1 - Scale(cmds[0].InitialValue) / 100.0) * h));
+                foreach (var cmd in cmds)
+                {
+                    double x = Math.Clamp(cmd.AbsoluteTime / (double)g.Duration, 0, 1) * w;
+                    double y = (1 - Scale(cmd.Value) / 100.0) * h;
+                    linePoly.Points.Add(new Point(x, y));
+                }
+                return;
+            }
+
+            // Vibration overlay: ride the funscript curve but add a high-frequency ripple whose amplitude
+            // grows with the Vibration bar, so the "added vibration" is visible right on the line.
+            double rippleAmp = (vib / 100.0) * 13.0;   // in 0-100 value units
+            const double cyclePx = 9.0;                // one buzz cycle ≈ every 9 px
+            int n = Math.Max(48, (int)(w / 3));        // ≈ one sample every 3 px
+            for (int i = 0; i <= n; i++)
+            {
+                double frac = (double)i / n;
+                double x = frac * w;
+                double baseV = Scale(ValueAt(g, (int)(frac * g.Duration)));
+                double ripple = rippleAmp * Math.Sin(x / cyclePx * (2 * Math.PI));
+                double v = Math.Clamp(baseV + ripple, 0, 100);
+                linePoly.Points.Add(new Point(x, (1 - v / 100.0) * h));
             }
         }
 

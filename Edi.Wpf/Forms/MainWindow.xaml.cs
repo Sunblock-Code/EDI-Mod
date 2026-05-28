@@ -1542,6 +1542,11 @@ namespace Edi.Forms
             {
                 DevicesGrid.ItemsSource = edi.Devices;
                 //DevicesGrid.Items.Refresh();
+                // Enforce the live Intensity/Vibration bar levels on the newly-connected device.
+                // Without this, a device that connects after startup ignores the bars until one is
+                // dragged — so e.g. a vibrator would run at its full configured range instead of the
+                // Vibration bar's current value (which now defaults to 0 = silent until raised).
+                ApplyIntensities();
             });
         }
 
@@ -2940,28 +2945,38 @@ namespace Edi.Forms
 
         private void Vibration_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) => ApplyIntensities();
 
-        // Live "intensity" / "vibration" bars. Both scale a device's output RANGE (Max) — the same
-        // thing the player's Intensity() does — but routed: stroke devices follow the Intensity bar,
-        // vibrating/oscillating devices follow the Vibration bar. Above 100% overdrives (device clamps).
+        // Live edit bars:
+        //  • INTENSITY scales every device's output range (Max) — the master output level.
+        //  • VIBRATION is an additive vibration OVERLAY (default 0): it adds extra buzz ON TOP of the
+        //    playing script for vibrating/oscillating devices, and drives the buzz drawn on the live
+        //    Playback preview. It does not mute or scale the script.
         private void ApplyIntensities()
         {
             try
             {
+                int stroke = sliderIntensity != null ? (int)sliderIntensity.Value : 100;
+                int vibe   = sliderVibration != null ? (int)sliderVibration.Value : 0;
+
+                // Show the vibration overlay live on the Playback graph (line ripple + dot jitter).
+                try { funscriptPreview.VibrationAmount = vibe; } catch { }
+
                 if (edi == null) return;
                 var cfg = edi.ConfigurationManager.Get<Edi.Core.Device.DevicesConfig>();
-                int stroke = sliderIntensity != null ? (int)sliderIntensity.Value : 100;
-                int vibe   = sliderVibration != null ? (int)sliderVibration.Value : 100;
+                double overlay = Math.Clamp(vibe / 100.0, 0, 1);
                 foreach (var d in edi.Devices)
                 {
+                    // Vibration overlay → extra buzz added on top of the script (vibrating actuators only).
+                    if (d is Edi.Core.Device.Buttplug.ButtplugDevice b && b.IsVibration)
+                        b.VibrationOverlay01 = overlay;
+
                     if (d is not Edi.Core.Device.Interfaces.IRange r) continue;
                     int dmin = 0, dmax = 100;   // sensible default if the device isn't in the config
                     if (cfg != null && cfg.Devices.TryGetValue(d.Name, out var def) && def != null)
                     {
                         dmin = def.Min; dmax = def.Max;
                     }
-                    bool isVibe = d is Edi.Core.Device.Buttplug.ButtplugDevice b && b.IsVibration;
-                    int pct = isVibe ? vibe : stroke;
-                    r.Max = dmin + (dmax - dmin) * pct / 100;
+                    // INTENSITY scales every device's output range.
+                    r.Max = dmin + (dmax - dmin) * stroke / 100;
                 }
             }
             catch { /* live tweak — never let a UI slider throw */ }
