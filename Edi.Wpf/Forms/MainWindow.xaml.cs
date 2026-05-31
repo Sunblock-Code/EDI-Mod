@@ -134,6 +134,10 @@ namespace Edi.Forms
 
             timer = new Timer(RefrehGrid);
             timer.Change(3000, 3000);
+            // Visible confirmation in the Log panel that this build will never auto-start a game.
+            // If you ever see this AND the game still opens by itself, the trigger is outside EDI
+            // (Startup folder shortcut, scheduled task, in-game wrapper script).
+            try { AppendLog("EDI started — game auto-launch is disabled. Use LAUNCH GAME to start a game."); } catch { }
 
             Closing += MainWindow_Closing;
 
@@ -166,18 +170,18 @@ namespace Edi.Forms
         }
         private void RefrehGrid(object? o)
         {
-            Dispatcher.InvokeAsync(async () =>
-            {
-                if (edi.DeviceCollector.Devices.Any(x => x.IsReady) 
-                    && !launched
-                    && !string.IsNullOrEmpty(config.ExecuteOnReady)
-                    )
-                {
-                    launched = true;
-                    lblStatus.Content = "launched: " + config.ExecuteOnReady;
-                    ExecuteCommandOrOpenPath(config.ExecuteOnReady);
-                }
-            });
+            // Auto-launch is COMPLETELY removed from this timer. Earlier builds gated it behind
+            // AppLocalSettings.BlockAutoLaunch (default true); this build has zero code paths
+            // that can launch a game from a device-ready signal — the gate isn't even consulted.
+            // Use the LAUNCH GAME button or a Create-shortcut .lnk to start a game manually.
+            //
+            // If you ever see the game start "on its own" with this build deployed, the trigger
+            // is something OUTSIDE Edi.exe — most often:
+            //   • a desktop .lnk from "Create shortcut" left in the Startup folder
+            //   • a Windows Task Scheduler entry or shell:startup item
+            //   • the launcher being started from inside a per-game folder whose helper exe
+            //     spawns the game alongside the in-game Edi.exe (that nested copy isn't this build).
+            _ = o;
         }
         private void ExecuteCommandOrOpenPath(string commandOrPath)
         {
@@ -242,6 +246,7 @@ namespace Edi.Forms
             logList.ItemsSource = _logEntries;
             InitSettingsPanel();
             InitQuickPrograms();
+            StartStatusPolling();   // periodic dot poll for Stash / Glyph / future URL pills
             SetupDocking();
             InitTopBarChips();
 
@@ -381,6 +386,7 @@ namespace Edi.Forms
             "options"    => OptionsCard,
             "info"       => InfoCard,
             "fmconverter" => FmConverterCard,
+            "previewplayer" => PreviewPlayerCard,
             _            => null
         };
 
@@ -405,6 +411,8 @@ namespace Edi.Forms
             PlaceCard(anchInfo,       InfoCard);
             PlaceCard(anchFm,         FmConverterCard);
             anchFm?.Hide();   // FM converter panel is optional — off until toggled on in Settings
+            PlaceCard(anchPreviewPlayer, PreviewPlayerCard);
+            anchPreviewPlayer?.Hide();   // Preview Player panel is optional — off until toggled on
         }
 
         // Older saved layouts (EdiLayout.config) predate the FM converter pane. If a restore didn't
@@ -429,6 +437,32 @@ namespace Edi.Forms
                 };
                 pane.Children.Add(a);
                 a.Hide();   // off by default; toggled on from Settings → Panels
+            }
+            catch { }
+        }
+
+        // Same idea as EnsureFmAnchorable: older saved layouts predate the Preview Player pane,
+        // so when we restore one we have to retrofit the anchorable or it'll never appear.
+        private void EnsurePreviewPlayerAnchorable()
+        {
+            try
+            {
+                if (Anch("previewplayer") != null) return;
+                var pane = dockManager.Layout.Descendents().OfType<LayoutAnchorablePane>().FirstOrDefault();
+                if (pane == null || PreviewPlayerCard == null) return;
+                (PreviewPlayerCard.Parent as Panel)?.Children.Remove(PreviewPlayerCard);
+                PreviewPlayerCard.Margin = new Thickness(0);
+                PreviewPlayerCard.Visibility = Visibility.Visible;
+                var a = new LayoutAnchorable
+                {
+                    ContentId = "previewplayer",
+                    Title = "Preview Player",
+                    CanClose = false,
+                    CanHide = true,
+                    Content = PreviewPlayerCard,
+                };
+                pane.Children.Add(a);
+                a.Hide();   // off by default; toggled on from Settings → Panels or the eye button
             }
             catch { }
         }
@@ -539,6 +573,7 @@ namespace Edi.Forms
                     .FirstOrDefault(a => a.ContentId == "info") ?? anchInfo;
 
                 EnsureFmAnchorable();   // older saved layouts predate the FM converter panel
+                EnsurePreviewPlayerAnchorable();   // ...and predate the Preview Player panel
                 return true;
             }
             catch
@@ -587,7 +622,7 @@ namespace Edi.Forms
             txtGameFolder.Text = s.GameFolder ?? "";
             txtFunscriptPlayer.Text = EffectiveFunscriptPlayerLocation();
             if (txtSteamGridKey != null) txtSteamGridKey.Text = s.SteamGridDbApiKey ?? "";
-            chkMoveGame.IsChecked = s.MoveGameLayout;
+            // chkMoveGame removed — GAME is its own AvalonDock pane now, the card layout is always on.
             chkShowInfo.IsChecked = s.ShowInfoTab;
             // Dev: preview-device toggle (guarded so loading it doesn't create the device before the gallery is ready)
             _suppressPreviewToggle = true;
@@ -609,11 +644,13 @@ namespace Edi.Forms
             ApplySearchBar(s.ShowSearchBar);
             chkStackLauncher.IsChecked = s.LauncherStackUrl;
             LauncherUrlOrientation = s.LauncherStackUrl ? Orientation.Vertical : Orientation.Horizontal;
+            if (chkBlockAutoLaunch != null) chkBlockAutoLaunch.IsChecked = s.BlockAutoLaunch;
             if (s.ColGameLeftWidth is double glw && glw > 100) _gameLeftColWidth = glw;
             _initSettings = false;
 
-            ApplyGameLayout(s.MoveGameLayout);
-            // The Info panel only shows when the user has enabled it.
+            // GAME layout: always "moved" (card layout) — the dropdown view is gone with the chkMoveGame toggle.
+            ApplyGameLayout(true);
+            // The Info panel only shows when the user has enabled it AND the game has an info file.
             ApplyInfoTab(s.ShowInfoTab);
 
             // Restore the saved Connection/Options split (kept as star weights so it stays resizable).
@@ -636,6 +673,17 @@ namespace Edi.Forms
         {
             if (!SettingsPopup.IsOpen) RefreshPanelChecks();
             SettingsPopup.IsOpen = !SettingsPopup.IsOpen;
+        }
+
+        // Toggle the Games sub-popup (Games Location + Auto-add), opened from the Settings popup's
+        // top-right "Games…" button. Lives in a separate popup so the Data tab stays focused on core
+        // paths. PlacementTarget is set explicitly here because sibling popups have separate
+        // NameScopes — the XAML ElementName binding doesn't reliably resolve across them.
+        private void SettingsGames_Click(object sender, RoutedEventArgs e)
+        {
+            if (SettingsGamesPopup == null) return;
+            SettingsGamesPopup.PlacementTarget = btnSettingsGames;
+            SettingsGamesPopup.IsOpen = !SettingsGamesPopup.IsOpen;
         }
 
         // ===================== Dock panel show/hide toggles =====================
@@ -667,6 +715,7 @@ namespace Edi.Forms
             chkPanelLog.IsChecked        = IsAnchVisible("log");
             chkPanelOptions.IsChecked    = IsAnchVisible("options");
             if (chkPanelFm != null) chkPanelFm.IsChecked = IsAnchVisible("fmconverter");
+            if (chkPanelPreviewPlayer != null) chkPanelPreviewPlayer.IsChecked = IsAnchVisible("previewplayer");
             _refreshingPanels = false;
         }
 
@@ -676,7 +725,30 @@ namespace Edi.Forms
             if (sender is not CheckBox cb || cb.Tag is not string id) return;
             var a = Anch(id);
             if (a == null) return;
-            if (cb.IsChecked == true) { a.Show(); a.IsActive = true; } else a.Hide();
+            if (cb.IsChecked == true)
+            {
+                // Preview Player needs a live PreviewDevice driving its ProgressBar — spin one up
+                // the moment the pane is shown.
+                if (id == "previewplayer") EnsurePreviewPlayerDevice();
+                a.Show();
+                a.IsActive = true;
+            }
+            else
+            {
+                a.Hide();
+                if (id == "previewplayer") TeardownPreviewPlayerDevice();
+            }
+        }
+
+        // Persist the auto-launch kill-switch as soon as it's toggled. Re-arm `launched` if the
+        // user re-enables auto-launch mid-session so the timer can fire ExecuteOnReady once.
+        private void BlockAutoLaunch_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (chkBlockAutoLaunch == null) return;
+            var s = AppLocalSettings.Load();
+            s.BlockAutoLaunch = chkBlockAutoLaunch.IsChecked == true;
+            s.Save();
+            if (!s.BlockAutoLaunch) launched = false;   // allow the next device-ready tick to fire
         }
 
         // Toggle launcher-pill layout between URL-under-name (Vertical) and URL-beside-name (Horizontal).
@@ -1305,12 +1377,13 @@ namespace Edi.Forms
             settings.GameFolder = string.IsNullOrWhiteSpace(txtGameFolder.Text) ? null : txtGameFolder.Text.Trim();
             settings.FunscriptPlayerPath = string.IsNullOrWhiteSpace(txtFunscriptPlayer.Text) ? null : AddGameDialog.CleanPath(txtFunscriptPlayer.Text);
             settings.SteamGridDbApiKey = txtSteamGridKey?.Text?.Trim() ?? "";
-            settings.MoveGameLayout = chkMoveGame.IsChecked == true;
+            // MoveGameLayout pinned to true — the toggle was removed (GAME pane covers it).
+            settings.MoveGameLayout = true;
             settings.ShowInfoTab = chkShowInfo.IsChecked == true;
             settings.CardHeight = sliderCardHeight.Value;
             settings.CoverBlur = sliderCoverBlur.Value;
             settings.Save();
-            ApplyGameLayout(settings.MoveGameLayout);
+            ApplyGameLayout(true);
             ApplyInfoTab(settings.ShowInfoTab);
 
             Edi.Core.Edi.SetOutputDir(newDir);
@@ -1601,10 +1674,13 @@ namespace Edi.Forms
         // EdiConfig.json somewhere) and add any not already listed, auto-detecting exe/gallery/info/type.
         private async void AutoAddGames_Click(object sender, RoutedEventArgs e)
         {
+            try { AppendLog("Auto-add: starting…"); } catch { }
             var root = AddGameDialog.CleanPath(txtGameFolder?.Text);
             if (string.IsNullOrWhiteSpace(root)) root = AppLocalSettings.Load().GameFolder ?? "";
+            try { AppendLog($"Auto-add: Games Location = '{root}'"); } catch { }
             if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
             {
+                try { AppendLog("Auto-add: aborting — Games Location is not a valid folder."); } catch { }
                 ThemedDialog.Info(this, "Auto-add games", "Folder not set",
                     "Set a valid Games Location first (Settings ▸ Data).");
                 return;
@@ -1646,11 +1722,143 @@ namespace Edi.Forms
                 edi.ConfigurationManager.Save(gamesConfig);
                 viewModel.galleries = ReloadGalleries();
             }
-            ThemedDialog.Info(this, "Auto-add games",
-                found.Count > 0 ? "Done" : "Nothing new",
-                found.Count > 0
-                    ? $"Added {found.Count} game(s) found under:\n{root}"
-                    : $"No new games found under:\n{root}\n\n(Auto-add looks for folders that already contain an EdiConfig.json.)");
+
+            try { AppendLog($"Auto-add: scanned — {found.Count} new game(s)."); } catch { }
+            int coverFetched = await FetchMissingCoversForLibraryAsync(btnAutoAddGames, logPrefix: "Auto-add");
+            if (coverFetched > 0) viewModel.galleries = ReloadGalleries();
+
+            // Compose a message that reflects both what was added and what got covered.
+            string title2, body2;
+            if (found.Count > 0 && coverFetched > 0)
+            {
+                title2 = "Done";
+                body2  = $"Added {found.Count} game(s) under:\n{root}\n\nAuto-found covers for {coverFetched} game(s) (new + existing that were missing them).";
+            }
+            else if (found.Count > 0)
+            {
+                title2 = "Done";
+                body2  = $"Added {found.Count} game(s) under:\n{root}";
+            }
+            else if (coverFetched > 0)
+            {
+                title2 = "Done";
+                body2  = $"No new games found under:\n{root}\n\nAuto-found covers for {coverFetched} existing game(s) that were missing them.";
+            }
+            else
+            {
+                title2 = "Nothing new";
+                body2  = $"No new games found under:\n{root}\n\n(Auto-add looks for folders that already contain an EdiConfig.json. Existing games already have covers, or no matches were found online.)";
+            }
+            ThemedDialog.Info(this, "Auto-add games", title2, body2);
+        }
+
+        // "Find Banners" button on the Games sub-popup: fetches a cover for every library entry
+        // that's currently missing one — same as the cover-fetch step of Auto-add, but standalone
+        // so the user doesn't have to re-scan their Games Location.
+        private async void FindMissingCovers_Click(object sender, RoutedEventArgs e)
+        {
+            try { AppendLog("Find banners: starting…"); } catch { }
+            int fetched = await FetchMissingCoversForLibraryAsync(sender as Button, logPrefix: "Find banners");
+            if (fetched > 0) viewModel.galleries = ReloadGalleries();
+            ThemedDialog.Info(this, "Find banners",
+                fetched > 0 ? "Done" : "Nothing to find",
+                fetched > 0
+                    ? $"Auto-found covers for {fetched} game(s) that were missing them."
+                    : "No online matches were found for the games missing a cover. Every game in your library either already has one on disk, or none of the sources (DLsite / F95 / itch.io / SteamGridDB) returned a result.");
+        }
+
+        // Shared art back-fill loop. Walks the library twice: once for missing banners (ImagePath)
+        // and once for missing icons (IconPath). Live progress is shown on `progressBtn` and the
+        // status bar so users see what's happening. Returns the combined fetched count.
+        private async Task<int> FetchMissingCoversForLibraryAsync(Button? progressBtn, string logPrefix)
+        {
+            var needsCover = gamesConfig.GamesInfo
+                .Where(g => string.IsNullOrWhiteSpace(g.ImagePath) || !System.IO.File.Exists(g.ImagePath))
+                .ToList();
+            var needsIcon = gamesConfig.GamesInfo
+                .Where(g => string.IsNullOrWhiteSpace(g.IconPath) || !System.IO.File.Exists(g.IconPath))
+                .ToList();
+            try { AppendLog($"{logPrefix}: {needsCover.Count} missing covers, {needsIcon.Count} missing custom icons."); } catch { }
+            if (needsCover.Count == 0 && needsIcon.Count == 0) return 0;
+
+            object? origContent = null;
+            string? origTooltip = null;
+            if (progressBtn != null)
+            {
+                origContent = progressBtn.Content;
+                origTooltip = progressBtn.ToolTip as string;
+                progressBtn.IsEnabled = false;
+            }
+            int coverFetched = 0;
+            int iconFetched  = 0;
+            try
+            {
+                // ── Pass 1: covers (DLsite → F95 → itch.io → SteamGridDB, via AutoFindAsync). ──
+                if (needsCover.Count > 0 && progressBtn != null)
+                    progressBtn.Content = $"Searching covers… 0 / {needsCover.Count}";
+                int idx = 0;
+                foreach (var gi in needsCover)
+                {
+                    idx++;
+                    if (progressBtn != null) progressBtn.Content = $"Searching covers… {idx} / {needsCover.Count}";
+                    try { lblStatus.Content = $"{logPrefix}: cover ({idx}/{needsCover.Count}) {gi.Name}…"; } catch { }
+                    try
+                    {
+                        var url = await CoverSearchDialog.AutoFindAsync(gi.Name);
+                        if (string.IsNullOrWhiteSpace(url)) continue;
+                        var local = await DownloadCoverAsync(url, gi.Name);
+                        await ApplyGameUpdate(gi, gi with { ImagePath = local }, reload: false);
+                        coverFetched++;
+                        try { AppendLog($"{logPrefix}: covered '{gi.Name}'."); } catch { }
+                    }
+                    catch (Exception ex)
+                    {
+                        try { AppendLog($"{logPrefix}: skipped '{gi.Name}' cover ({ex.GetType().Name})."); } catch { }
+                    }
+                }
+
+                // ── Pass 2: SteamGridDB icons (needs API key — silently skips otherwise). ──
+                // Only games that haven't already been served by a folder icon / .ico / exe icon are
+                // queried, since the resolver still falls back to those when IconPath is empty.
+                if (needsIcon.Count > 0 && progressBtn != null)
+                    progressBtn.Content = $"Searching icons… 0 / {needsIcon.Count}";
+                idx = 0;
+                foreach (var gi in needsIcon)
+                {
+                    idx++;
+                    if (progressBtn != null) progressBtn.Content = $"Searching icons… {idx} / {needsIcon.Count}";
+                    try { lblStatus.Content = $"{logPrefix}: icon ({idx}/{needsIcon.Count}) {gi.Name}…"; } catch { }
+                    try
+                    {
+                        var url = await CoverSearchDialog.AutoFindIconAsync(gi.Name);
+                        if (string.IsNullOrWhiteSpace(url)) continue;
+                        // Re-read in case the cover pass already mutated this game in the list.
+                        var current = gamesConfig.GamesInfo.FirstOrDefault(x => ReferenceEquals(x, gi))
+                                   ?? gamesConfig.GamesInfo.FirstOrDefault(x => x.Name == gi.Name && x.Path == gi.Path);
+                        if (current == null) continue;
+                        var local = await DownloadIconAsync(url, current.Name);
+                        await ApplyGameUpdate(current, current with { IconPath = local }, reload: false);
+                        iconFetched++;
+                        try { AppendLog($"{logPrefix}: iconed '{gi.Name}'."); } catch { }
+                    }
+                    catch (Exception ex)
+                    {
+                        try { AppendLog($"{logPrefix}: skipped '{gi.Name}' icon ({ex.GetType().Name})."); } catch { }
+                    }
+                }
+            }
+            finally
+            {
+                if (progressBtn != null)
+                {
+                    progressBtn.Content   = origContent;
+                    progressBtn.ToolTip   = origTooltip;
+                    progressBtn.IsEnabled = true;
+                }
+                try { lblStatus.Content = ""; } catch { }
+                try { AppendLog($"{logPrefix}: done — {coverFetched} cover(s), {iconFetched} icon(s)."); } catch { }
+            }
+            return coverFetched + iconFetched;
         }
 
         private async void ReloadButton_Click(object sender, RoutedEventArgs e)
@@ -1796,6 +2004,16 @@ namespace Edi.Forms
             }
             finally { _suppressGameReload = false; }
 
+            // Bust the icon cache when art changes — the resolver caches by folder, so without this
+            // the card would still render the OLD icon/cover until restart.
+            if (!string.Equals(old.IconPath, updated.IconPath, StringComparison.OrdinalIgnoreCase)
+             || !string.Equals(old.ImagePath, updated.ImagePath, StringComparison.OrdinalIgnoreCase))
+            {
+                GameIconConverter.ClearCache();
+                try { GamesComboBox.Items.Refresh(); } catch { }
+                try { lstGames.Items.Refresh(); } catch { }
+            }
+
             edi.ConfigurationManager.Save(gamesConfig);
 
             if (reload && isCurrent)
@@ -1910,6 +2128,383 @@ namespace Edi.Forms
             await ApplyGameUpdate(target, target with { ImagePath = null }, reload: false);
         }
 
+        // ===== Icon submenu handlers =====
+        // Mirror the Image submenu handlers above but target IconPath. The card resolver checks
+        // IconPath first, so once one of these sets a value the card shows it immediately.
+
+        private async void CardSetIconFile_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            var dlg = new OpenFileDialog
+            {
+                Title = "Select an icon image",
+                Filter = "Icon image|*.ico;*.png;*.jpg;*.jpeg;*.webp;*.bmp|All files|*.*",
+                FilterIndex = 1,
+                FileName = target.IconPath ?? "",
+            };
+            if (dlg.ShowDialog(this) != true) return;
+            await ApplyGameUpdate(target, target with { IconPath = dlg.FileName }, reload: false);
+        }
+
+        private async void CardSetIconUrl_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            var url = ThemedDialog.Prompt(this, "Set icon from URL", "Paste an icon URL",
+                "The image is downloaded into <OutputDir>\\icons and used as this game's icon.",
+                target.IconPath);
+            if (string.IsNullOrWhiteSpace(url)) return;
+            try
+            {
+                var local = await DownloadIconAsync(url, target.Name);
+                await ApplyGameUpdate(target, target with { IconPath = local }, reload: false);
+            }
+            catch (Exception ex)
+            {
+                ThemedDialog.Info(this, "Couldn't fetch icon", "Download failed", ex.Message);
+            }
+        }
+
+        private async void CardFetchIcon_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+
+            // Multi-source: SteamGridDB icons first (needs the API key), then falls back through
+            // DLsite / F95 / itch.io / SteamGridDB grids if no real icon is available. No API key
+            // just means the icon-specific search returns nothing — the cover fallback still works.
+            try
+            {
+                var url = await CoverSearchDialog.AutoFindIconAsync(target.Name);
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    ThemedDialog.Info(this, "Fetch icon", "Nothing found",
+                        $"No matches for \"{target.Name}\" on SteamGridDB / DLsite / F95 / itch.io. (Add a free SteamGridDB API key in Settings → Data for the best icon results.)");
+                    return;
+                }
+                var local = await DownloadIconAsync(url, target.Name);
+                await ApplyGameUpdate(target, target with { IconPath = local }, reload: false);
+            }
+            catch (Exception ex)
+            {
+                ThemedDialog.Info(this, "Couldn't fetch icon", "Download failed", ex.Message);
+            }
+        }
+
+        // "Create shortcut…" — opens CreateShortcutDialog so the user can pick the launch target
+        // (default exe / one of LaunchOptions) and toggle which quick programs (Intiface,
+        // Funscript Player, etc.) auto-start with it. On Create, generates a .lnk + helper .cmd
+        // and confirms the file path that was written.
+        private void CardCreateShortcut_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            try
+            {
+                var dlg = new CreateShortcutDialog(target, QuickPrograms) { Owner = this };
+                if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.SavedShortcutPath))
+                {
+                    ThemedDialog.Info(this, "Create shortcut", "Shortcut created",
+                        $"Saved to:\n{dlg.SavedShortcutPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                ThemedDialog.Info(this, "Create shortcut", "Failed", ex.Message);
+            }
+        }
+
+        // "Fetch video clip" — scrape DLsite then itch.io for a trailer .mp4 and apply it as
+        // the card's banner. The existing per-card hover/select player handles .mp4 ImagePaths
+        // out of the box, so a successful download turns the card into an animated cover.
+        private async void CardFetchVideo_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            try
+            {
+                var url = await CoverSearchDialog.AutoFindVideoAsync(target.Name);
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    ThemedDialog.Info(this, "Fetch video clip", "Nothing found",
+                        $"No preview clip on DLsite or itch.io for \"{target.Name}\". Try the picker variant — it lists every result so you can pick a sibling product.");
+                    return;
+                }
+                var local = await DownloadVideoAsync(url, target.Name);
+                await ApplyGameUpdate(target, target with { ImagePath = local }, reload: false);
+            }
+            catch (Exception ex)
+            {
+                ThemedDialog.Info(this, "Couldn't fetch video clip", "Download failed", ex.Message);
+            }
+        }
+
+        // Picker variant — collects every DLsite + itch.io match into one ImagePickerDialog,
+        // showing the product poster as each row's thumbnail. The chosen entry's .mp4 gets
+        // downloaded into <OutputDir>\covers\<game>\ and assigned as ImagePath.
+        private async void CardFetchVideoPick_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            try
+            {
+                var hits = await CoverSearchDialog.SearchAllVideosAsync(target.Name);
+                if (hits.Count == 0)
+                {
+                    ThemedDialog.Info(this, "Fetch video clip", "Nothing found",
+                        $"No preview clips on DLsite or itch.io for \"{target.Name}\".");
+                    return;
+                }
+                // Build a temp picker that maps each VideoResult to a labeled thumb. FilePath
+                // here is the REMOTE .mp4 URL — the dialog returns it as SelectedPath, then
+                // we download it after the user confirms.
+                var items = hits.Select(v => new ImagePickerDialog.Item
+                {
+                    FilePath = v.Url,
+                    Label    = v.Label,
+                    Thumb    = !string.IsNullOrWhiteSpace(v.ThumbUrl) ? new System.Windows.Media.Imaging.BitmapImage(new Uri(v.ThumbUrl)) : null,
+                }).ToList();
+
+                var dlg = new ImagePickerDialog(
+                    title: $"Choose video clip — {target.Name}",
+                    hint:  "Each row is a preview .mp4 scraped from a DLsite/itch.io product page. Pick one and press Use — it'll be downloaded and used as this card's animated banner.",
+                    initial: items)
+                { Owner = this };
+                if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.SelectedPath)) return;
+
+                var local = await DownloadVideoAsync(dlg.SelectedPath, target.Name);
+                await ApplyGameUpdate(target, target with { ImagePath = local }, reload: false);
+            }
+            catch (Exception ex)
+            {
+                ThemedDialog.Info(this, "Couldn't fetch video clip", "Download failed", ex.Message);
+            }
+        }
+
+        // Download an .mp4 (or .webm) into the per-game cover cache. Defaults to .mp4 if the
+        // URL lacks a recognized extension, since both DLsite and itch.io serve MP4 previews.
+        private static async Task<string> DownloadVideoAsync(string url, string gameName)
+        {
+            var bytes = await _coverHttp.GetByteArrayAsync(url);
+            var dir = CoverCacheDir(gameName);
+            Directory.CreateDirectory(dir);
+            var ext = Path.GetExtension(new Uri(url).AbsolutePath).ToLowerInvariant();
+            if (ext != ".mp4" && ext != ".webm" && ext != ".mov" && ext != ".m4v") ext = ".mp4";
+            int i = 1; string file;
+            do { file = Path.Combine(dir, $"video_{i:D2}{ext}"); i++; }
+            while (File.Exists(file) && i < 999);
+            await File.WriteAllBytesAsync(file, bytes);
+            return file;
+        }
+
+        // "Auto-fetch banner" — banner analog of the icon Fetch action above. Same multi-source
+        // chain (DLsite → F95 → itch.io → SteamGridDB), but applies to ImagePath (the banner)
+        // instead of IconPath. Silent first-match pick, no picker dialog.
+        private async void CardAutoFetchBanner_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            try
+            {
+                var url = await CoverSearchDialog.AutoFindAsync(target.Name);
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    ThemedDialog.Info(this, "Auto-fetch banner", "Nothing found",
+                        $"No matches for \"{target.Name}\" on DLsite / F95 / itch.io / SteamGridDB.");
+                    return;
+                }
+                var local = await DownloadCoverAsync(url, target.Name);
+                await ApplyGameUpdate(target, target with { ImagePath = local }, reload: false);
+            }
+            catch (Exception ex)
+            {
+                ThemedDialog.Info(this, "Couldn't auto-fetch banner", "Download failed", ex.Message);
+            }
+        }
+
+        private async void CardClearIcon_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            if (string.IsNullOrEmpty(target.IconPath)) return;
+            // Drop the custom IconPath → resolver falls back to the folder/.ico/exe chain.
+            await ApplyGameUpdate(target, target with { IconPath = null }, reload: false);
+        }
+
+        // Opens the CoverSearchDialog (which already hits F95 / DLsite / itch.io / SteamGridDB)
+        // and assigns the picked image as the game's ICON instead of its banner. Useful when
+        // the auto-fetch picks the wrong one and you want to choose from a result grid.
+        private async void CardFetchIconPick_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            var dlg = new CoverSearchDialog(target.Name) { Owner = this, Title = $"Find icon — {target.Name}" };
+            if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.SelectedImageUrl)) return;
+            try
+            {
+                var local = await DownloadIconAsync(dlg.SelectedImageUrl, target.Name);
+                await ApplyGameUpdate(target, target with { IconPath = local }, reload: false);
+            }
+            catch (Exception ex)
+            {
+                ThemedDialog.Info(this, "Couldn't fetch icon", "Download failed", ex.Message);
+            }
+        }
+
+        // Same CropDialog the banner uses, locked to 1:1 since icons are square. Writes the
+        // cropped output as a new file and points IconPath at it.
+        private async void CardCropIcon_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            if (string.IsNullOrWhiteSpace(target.IconPath) || !File.Exists(target.IconPath))
+            {
+                ThemedDialog.Info(this, "Nothing to crop", "No icon set",
+                    "Set an icon first (right-click → Icon → Set from file / Fetch icon / Browse icons), then crop it.");
+                return;
+            }
+            var dlg = new CropDialog(target.IconPath, 1.0) { Owner = this };
+            if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.CroppedPath))
+                await ApplyGameUpdate(target, target with { IconPath = dlg.CroppedPath }, reload: false);
+        }
+
+        // ===== Quick-swap icon source handlers =====
+        // Each pins the icon to one explicit source (folder / .ico / exe) by materializing that
+        // source into the per-game cache folder and setting IconPath to the cached file.
+
+        private async void CardUseFolderIcon_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            var file = CacheFolderIcon(target);
+            if (file == null)
+            {
+                ThemedDialog.Info(this, "Use folder icon", "No folder icon",
+                    "This folder doesn't have a custom Windows icon (Properties → Customize → Change Icon). Set one in Windows first, or pick a different source.");
+                return;
+            }
+            await ApplyGameUpdate(target, target with { IconPath = file }, reload: false);
+        }
+
+        private async void CardUseIcoInFolder_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            var ico = FindIcoInFolder(target);
+            if (ico == null)
+            {
+                ThemedDialog.Info(this, "Use .ico in folder", "No .ico file",
+                    "No .ico file was found in the game folder. Drop one in there or pick a different source.");
+                return;
+            }
+            await ApplyGameUpdate(target, target with { IconPath = ico }, reload: false);
+        }
+
+        private async void CardUseExeIcon_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            var file = CacheExeIcon(target);
+            if (file == null)
+            {
+                ThemedDialog.Info(this, "Use exe icon", "No exe set",
+                    "Set the game's executable path first (Edit game…) — the exe is where the icon is extracted from.");
+                return;
+            }
+            await ApplyGameUpdate(target, target with { IconPath = file }, reload: false);
+        }
+
+        // ===== Browse pickers =====
+        // Opens the ImagePickerDialog with every available source as a thumbnail: folder icon,
+        // .ico in folder, exe icon, plus everything already cached in <OutputDir>\icons\<game>\.
+        // "Fetch more" hits SteamGridDB and refreshes the grid. Click → IconPath update.
+        private async void CardBrowseIcons_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            await ShowIconBrowserFor(target);
+        }
+
+        private async Task ShowIconBrowserFor(GameInfo target)
+        {
+            var dir = IconCacheDir(target.Name);
+            var items = new List<ImagePickerDialog.Item>();
+
+            // Folder icon (materialize on the fly so it shows in the grid).
+            var folderIcon = CacheFolderIcon(target);
+            if (folderIcon != null) items.Add(new ImagePickerDialog.Item { FilePath = folderIcon, Label = "Folder icon" });
+
+            // .ico in folder.
+            var ico = FindIcoInFolder(target);
+            if (ico != null) items.Add(new ImagePickerDialog.Item { FilePath = ico, Label = ".ico in folder" });
+
+            // Exe icon.
+            var exe = CacheExeIcon(target);
+            if (exe != null) items.Add(new ImagePickerDialog.Item { FilePath = exe, Label = "Exe icon" });
+
+            // Cached SteamGridDB / custom downloads.
+            if (Directory.Exists(dir))
+            {
+                foreach (var f in Directory.EnumerateFiles(dir).OrderBy(x => x))
+                {
+                    var ext = Path.GetExtension(f).ToLowerInvariant();
+                    if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" && ext != ".bmp" && ext != ".gif" && ext != ".ico") continue;
+                    // Skip the synthetic _folder/_exe entries (already added above as labeled rows).
+                    var name = Path.GetFileNameWithoutExtension(f);
+                    if (name == "_folder" || name == "_exe") continue;
+                    items.Add(new ImagePickerDialog.Item { FilePath = f, Label = name });
+                }
+            }
+
+            var dlg = new ImagePickerDialog(
+                title: $"Choose icon — {target.Name}",
+                hint: "Click a thumbnail and press Use. \"Fetch more\" queries SteamGridDB for additional icon variants (needs the API key in Settings → Data).",
+                initial: items)
+            {
+                Owner = this,
+                CacheDir = dir,
+                FetchMoreAsync = async () =>
+                {
+                    var hits = await CoverSearchDialog.SearchSteamGridDbIconsAsync(target.Name);
+                    foreach (var h in hits.Take(12))
+                    {
+                        try { await DownloadIconAsync(h.ImageUrl, target.Name); } catch { }
+                    }
+                }
+            };
+            if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.SelectedPath))
+            {
+                await ApplyGameUpdate(target, target with { IconPath = dlg.SelectedPath }, reload: false);
+            }
+        }
+
+        // Parallel browse for cover/banner art. Lists everything cached under <OutputDir>\covers\<game>\
+        // and "Fetch more" pulls additional results from DLsite → F95 → itch.io → SteamGridDB.
+        private async void CardBrowseCovers_Click(object sender, RoutedEventArgs e)
+        {
+            if (CardGame(sender) is not GameInfo target) return;
+            var dir = CoverCacheDir(target.Name);
+            var items = new List<ImagePickerDialog.Item>();
+            if (Directory.Exists(dir))
+            {
+                foreach (var f in Directory.EnumerateFiles(dir).OrderBy(x => x))
+                {
+                    var ext = Path.GetExtension(f).ToLowerInvariant();
+                    if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" && ext != ".bmp" && ext != ".gif") continue;
+                    items.Add(new ImagePickerDialog.Item { FilePath = f, Label = Path.GetFileNameWithoutExtension(f) });
+                }
+            }
+            var dlg = new ImagePickerDialog(
+                title: $"Choose cover — {target.Name}",
+                hint: "Click a thumbnail and press Use. \"Fetch more\" queries DLsite / F95 / itch.io / SteamGridDB for additional cover variants.",
+                initial: items)
+            {
+                Owner = this,
+                CacheDir = dir,
+                FetchMoreAsync = async () =>
+                {
+                    // Hit the SAME pipeline AutoFindAsync uses, but cache the FIRST result instead
+                    // of pre-filtering. Repeat clicks keep adding new files into the per-game folder.
+                    var url = await CoverSearchDialog.AutoFindAsync(target.Name);
+                    if (!string.IsNullOrWhiteSpace(url))
+                    {
+                        try { await DownloadCoverAsync(url, target.Name); } catch { }
+                    }
+                }
+            };
+            if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.SelectedPath))
+            {
+                await ApplyGameUpdate(target, target with { ImagePath = dlg.SelectedPath }, reload: false);
+            }
+        }
+
         // ===================== Animated (video) covers — only the hovered/selected card plays =====================
 
         private static readonly string[] _videoExt = { ".mp4", ".m4v", ".mov" };
@@ -1926,11 +2521,47 @@ namespace Edi.Forms
             if (sender is System.Windows.Controls.ListBoxItem item) UpdateCardMedia(item);
         }
 
+        // Auto-fetch path: when ImagePath isn't a video/gif and the game's folder has a
+        // "media" subfolder, pick a (cached) random video/gif from there. Lets users drop
+        // clips into <game>\media\ and have them play on hover without manually pointing
+        // ImagePath at one. Stable per-game so the same clip keeps playing for the session.
+        private static readonly string[] _animExt = { ".mp4", ".m4v", ".mov", ".gif" };
+        private readonly Dictionary<string, string> _mediaFolderPick = new(StringComparer.OrdinalIgnoreCase);
+        private string? AutoPickMediaClip(GameInfo? g)
+        {
+            if (g == null) return null;
+            var folder = ResolveGameFolder(g);
+            if (folder == null) return null;
+            var media = Path.Combine(folder, "media");
+            if (!Directory.Exists(media)) return null;
+            if (_mediaFolderPick.TryGetValue(media, out var cached) && File.Exists(cached)) return cached;
+            try
+            {
+                var pick = Directory.EnumerateFiles(media, "*.*", SearchOption.TopDirectoryOnly)
+                    .Where(f => _animExt.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                    .OrderBy(_ => Guid.NewGuid().ToString())   // random per session
+                    .FirstOrDefault();
+                if (pick != null) _mediaFolderPick[media] = pick;
+                return pick;
+            }
+            catch { return null; }
+        }
+
         // Play the card's animated cover (mp4 video or animated gif) only while it's hovered or
         // selected; otherwise release it so a long list stays light.
         private void UpdateCardMedia(System.Windows.Controls.ListBoxItem item)
         {
-            var path = (item.DataContext as GameInfo)?.ImagePath;
+            var game = item.DataContext as GameInfo;
+            var path = game?.ImagePath;
+            bool isAnim = !string.IsNullOrWhiteSpace(path) && File.Exists(path)
+                          && _animExt.Contains(Path.GetExtension(path!).ToLowerInvariant());
+            if (!isAnim)
+            {
+                // Fall back to a clip from <game>\media\. Doesn't overwrite ImagePath; just
+                // used in-place for hover/select playback.
+                var auto = AutoPickMediaClip(game);
+                if (!string.IsNullOrWhiteSpace(auto)) path = auto;
+            }
             bool exists = !string.IsNullOrWhiteSpace(path) && File.Exists(path);
             bool active = item.IsMouseOver || item.IsSelected;
             string ext = exists ? System.IO.Path.GetExtension(path!).ToLowerInvariant() : "";
@@ -2003,20 +2634,180 @@ namespace Edi.Forms
         }
 
         // Downloads an image URL into <OutputDir>\covers and returns the local file path.
-        private static async Task<string> DownloadCoverAsync(string url, string gameName)
+        // Per-game cache layout: <OutputDir>\covers\<safeName>\<n>.<ext>  and  <OutputDir>\icons\<safeName>\<n>.<ext>
+        // Each successful download appends a new file, so previously-downloaded variants stick
+        // around for the picker to browse (no need to re-hit DLsite / SteamGridDB).
+        private static string SafeGameDirName(string name)
+        {
+            var safe = string.Join("_", (name ?? "game").Split(Path.GetInvalidFileNameChars()));
+            return string.IsNullOrWhiteSpace(safe) ? "game" : safe;
+        }
+
+        private static string IconCacheDir(string gameName)
+            => Path.Combine(Edi.Core.Edi.OutputDir, "icons", SafeGameDirName(gameName));
+
+        private static string CoverCacheDir(string gameName)
+            => Path.Combine(Edi.Core.Edi.OutputDir, "covers", SafeGameDirName(gameName));
+
+        private static Task<string> DownloadCoverAsync(string url, string gameName)
+            => DownloadArtAsync(url, CoverCacheDir(gameName), "cover");
+
+        // Same as DownloadCoverAsync but lands in <OutputDir>\icons\<game>\. Kept as its own
+        // helper so the call sites read intent-clearly.
+        private static Task<string> DownloadIconAsync(string url, string gameName)
+            => DownloadArtAsync(url, IconCacheDir(gameName), "icon");
+
+        private static async Task<string> DownloadArtAsync(string url, string targetDir, string defaultName)
         {
             var bytes = await _coverHttp.GetByteArrayAsync(url);
-            var dir = Path.Combine(Edi.Core.Edi.OutputDir, "covers");
-            Directory.CreateDirectory(dir);
+            Directory.CreateDirectory(targetDir);
 
             var ext = Path.GetExtension(new Uri(url).AbsolutePath);
-            if (string.IsNullOrWhiteSpace(ext) || ext.Length > 5) ext = ".jpg";
-            var safe = string.Join("_", gameName.Split(Path.GetInvalidFileNameChars()));
-            if (string.IsNullOrWhiteSpace(safe)) safe = "cover";
+            if (string.IsNullOrWhiteSpace(ext) || ext.Length > 5) ext = ".png";
 
-            var file = Path.Combine(dir, safe + ext);
+            // Pick the next free numeric name so duplicates accumulate rather than overwrite.
+            int i = 1;
+            string file;
+            do { file = Path.Combine(targetDir, $"{defaultName}_{i:D2}{ext}"); i++; }
+            while (File.Exists(file) && i < 999);
+
             await File.WriteAllBytesAsync(file, bytes);
             return file;
+        }
+
+        // ===== Icon source helpers (for the right-click "Use folder/.ico/exe icon" quick actions) =====
+
+        // Returns the folder backing this game (same logic the ResolveCardIcon resolver uses):
+        // prefers GalleryPath, falls back to ExePath's directory.
+        private static string? ResolveGameFolder(GameInfo g)
+        {
+            string? folder = !string.IsNullOrWhiteSpace(g.GalleryPath) && Directory.Exists(g.GalleryPath)
+                ? g.GalleryPath
+                : (!string.IsNullOrWhiteSpace(g.ExePath) ? Path.GetDirectoryName(g.ExePath) : null);
+            return Directory.Exists(folder) ? folder : null;
+        }
+
+        // Encode an ImageSource to PNG bytes on disk. Used to materialize transient HICON sources
+        // (folder shell icons / exe-extracted icons) into the cache so the picker can show them.
+        private static bool SaveImageSourceAsPng(System.Windows.Media.ImageSource src, string file)
+        {
+            try
+            {
+                if (src is not System.Windows.Media.Imaging.BitmapSource bs) return false;
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bs));
+                using var fs = File.Create(file);
+                enc.Save(fs);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // Resolve the "best representation" of the folder's icon and cache it as
+        // <gameCache>\_folder.png. The order matters because Windows hides folder-icon
+        // customization in several places — earlier builds fell through to the generic
+        // shell icon too readily and produced "default folder" results.
+        //
+        //   1) desktop.ini's IconResource / IconFile / IconIndex — the real "Customize" path
+        //      • for .ico files use IconBitmapDecoder and grab the largest frame
+        //      • otherwise PrivateExtractIcons handles .exe/.dll indexed icons
+        //   2) folder.ico / icon.ico / _folder.ico inside the folder (common loose conventions)
+        //   3) Shell jumbo for the folder itself (last resort — this is what returns the
+        //      generic icon when nothing is customized)
+        //
+        // The decision is logged so the user can see which source the icon came from when
+        // they pick "Use folder icon" and don't see what they expected.
+        private string? CacheFolderIcon(GameInfo g)
+        {
+            var folder = ResolveGameFolder(g);
+            if (folder == null) return null;
+
+            System.Windows.Media.ImageSource? img = null;
+            string source = "shell-default";
+
+            // 1) desktop.ini → IconResource
+            var src = GameIconConverter.ResolveDesktopIniIcon(folder);
+            if (src != null && File.Exists(src.Value.file))
+            {
+                var ext = Path.GetExtension(src.Value.file).ToLowerInvariant();
+                if (ext == ".ico")
+                {
+                    // IconBitmapDecoder reads every frame inside the .ico — taking the largest
+                    // frame is reliably the high-res variant. PrivateExtractIcons sometimes
+                    // grabs the smallest frame on certain multi-frame icons.
+                    try
+                    {
+                        using var fs = File.OpenRead(src.Value.file);
+                        var dec = new System.Windows.Media.Imaging.IconBitmapDecoder(
+                            fs,
+                            System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
+                            System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+                        var best = dec.Frames.OrderByDescending(f => f.PixelWidth).FirstOrDefault();
+                        if (best != null) { best.Freeze(); img = best; source = "desktop.ini → " + Path.GetFileName(src.Value.file); }
+                    }
+                    catch { }
+                }
+                if (img == null)
+                {
+                    img = FolderIcon.GetHighRes(src.Value.file, 256, src.Value.index)
+                       ?? FolderIcon.GetJumbo(src.Value.file)
+                       ?? FolderIcon.Get(src.Value.file);
+                    if (img != null) source = $"desktop.ini → {Path.GetFileName(src.Value.file)}#{src.Value.index}";
+                }
+            }
+
+            // 2) folder.ico / icon.ico / _folder.ico loose in the folder
+            if (img == null)
+            {
+                foreach (var candidate in new[] { "folder.ico", "icon.ico", "_folder.ico" })
+                {
+                    var p = Path.Combine(folder, candidate);
+                    if (!File.Exists(p)) continue;
+                    try
+                    {
+                        using var fs = File.OpenRead(p);
+                        var dec = new System.Windows.Media.Imaging.IconBitmapDecoder(
+                            fs,
+                            System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
+                            System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+                        var best = dec.Frames.OrderByDescending(f => f.PixelWidth).FirstOrDefault();
+                        if (best != null) { best.Freeze(); img = best; source = "loose " + candidate; break; }
+                    }
+                    catch { }
+                }
+            }
+
+            // 3) Shell jumbo for the folder (will be the generic folder icon if nothing's customized)
+            if (img == null)
+            {
+                img = FolderIcon.GetJumbo(folder) ?? FolderIcon.Get(folder);
+                if (img != null) source = "shell jumbo";
+            }
+            if (img == null) return null;
+
+            var file = Path.Combine(IconCacheDir(g.Name), "_folder.png");
+            try { AppendLog($"Use folder icon: source={source} → {file}"); } catch { }
+            return SaveImageSourceAsPng(img, file) ? file : null;
+        }
+
+        // First *.ico file sitting in the game folder, or null.
+        private static string? FindIcoInFolder(GameInfo g)
+        {
+            var folder = ResolveGameFolder(g);
+            if (folder == null) return null;
+            try { return Directory.EnumerateFiles(folder, "*.ico", SearchOption.TopDirectoryOnly).FirstOrDefault(); }
+            catch { return null; }
+        }
+
+        // Extract the .exe icon at 256px and cache it as <gameCache>\_exe.png. Returns the cached path.
+        private string? CacheExeIcon(GameInfo g)
+        {
+            if (string.IsNullOrWhiteSpace(g.ExePath) || !File.Exists(g.ExePath)) return null;
+            var img = FolderIcon.GetHighRes(g.ExePath, 256) ?? FolderIcon.GetJumbo(g.ExePath) ?? FolderIcon.Get(g.ExePath);
+            if (img == null) return null;
+            var file = Path.Combine(IconCacheDir(g.Name), "_exe.png");
+            return SaveImageSourceAsPng(img, file) ? file : null;
         }
 
         // ===================== Quick-launch bar =====================
@@ -2073,7 +2864,60 @@ namespace Edi.Forms
         private void QuickProgram_Click(object sender, MouseButtonEventArgs e)
         {
             if ((sender as FrameworkElement)?.DataContext is not QuickProgram p) return;
-            if (string.IsNullOrWhiteSpace(p.Path) || !File.Exists(p.Path))
+
+            // Glyph is a server+client pair. Start the server first if it isn't already
+            // running, then the client. Both paths live on the pill: Path=client (so the
+            // generic-launch fallback still works), Url=server.
+            if (string.Equals(p.Name, "Glyph", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var server = p.Url;   // we stash the server exe path here on Add
+                    if (!string.IsNullOrWhiteSpace(server) && File.Exists(server))
+                    {
+                        var serverProcName = Path.GetFileNameWithoutExtension(server);
+                        var alreadyRunning = System.Diagnostics.Process.GetProcessesByName(serverProcName).Length > 0;
+                        if (!alreadyRunning)
+                        {
+                            Process.Start(new ProcessStartInfo
+                            {
+                                FileName = server,
+                                WorkingDirectory = Path.GetDirectoryName(server) ?? Environment.CurrentDirectory,
+                                UseShellExecute = true,
+                            });
+                            try { AppendLog("Glyph: started Glyph Server."); } catch { }
+                        }
+                    }
+                    if (!string.IsNullOrWhiteSpace(p.Path) && File.Exists(p.Path))
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = p.Path,
+                            WorkingDirectory = Path.GetDirectoryName(p.Path) ?? Environment.CurrentDirectory,
+                            UseShellExecute = true,
+                        });
+                    }
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    ThemedDialog.Info(this, "Glyph", "Couldn't launch", ex.Message);
+                    return;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(p.Path))
+            {
+                ThemedDialog.Info(this, "Quick launch", "Nothing to launch",
+                    "This pill has no Path or URL set. Remove it (right-click) and add it again.");
+                return;
+            }
+
+            // URL pills (Stash, Swagger-style web entries) open in the default browser via
+            // ShellExecute; the File.Exists check only applies to local exes.
+            bool isUrl = p.Path.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                      || p.Path.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+            if (!isUrl && !File.Exists(p.Path))
             {
                 ThemedDialog.Info(this, "Quick launch", "Program not found",
                     $"Couldn't find:\n{p.Path}\n\nRemove it (right-click) and add it again.");
@@ -2084,7 +2928,7 @@ namespace Edi.Forms
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = p.Path,
-                    WorkingDirectory = Path.GetDirectoryName(p.Path) ?? Environment.CurrentDirectory,
+                    WorkingDirectory = isUrl ? Environment.CurrentDirectory : (Path.GetDirectoryName(p.Path) ?? Environment.CurrentDirectory),
                     UseShellExecute = true,
                 });
             }
@@ -2187,17 +3031,62 @@ namespace Edi.Forms
             _pillDragging.Opacity = 0.5;
             try { DragDrop.DoDragDrop(_pillDragging, "pill", DragDropEffects.Move); }
             catch { }
-            finally { if (_pillDragging != null) _pillDragging.Opacity = 1; _pillDragging = null; }
+            finally
+            {
+                if (_pillDragging != null) _pillDragging.Opacity = 1;
+                _pillDragging = null;
+                ClearPillDropAdorner();
+            }
         }
+
+        // Insertion-line adorner for the top bar — vertical line snapping between pills as
+        // the cursor hovers. Same visual language as the games-list drop indicator so the two
+        // drag UIs feel consistent.
+        private DragInsertionAdorner? _pillDropAdorner;
 
         private void TopBar_DragOver(object sender, DragEventArgs e)
         {
             e.Effects = _pillDragging != null ? DragDropEffects.Move : DragDropEffects.None;
             e.Handled = true;
+            if (_pillDragging == null) return;
+
+            if (_pillDropAdorner == null)
+            {
+                var layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(topBar);
+                if (layer != null) { _pillDropAdorner = new DragInsertionAdorner(topBar); layer.Add(_pillDropAdorner); }
+            }
+            if (_pillDropAdorner == null) return;
+
+            try
+            {
+                var target = FindTopBarPill(e.OriginalSource as DependencyObject);
+                double x;
+                if (target != null && !ReferenceEquals(target, _pillDragging))
+                {
+                    var left = target.TranslatePoint(new System.Windows.Point(0, 0), topBar);
+                    bool after = e.GetPosition(target).X > target.ActualWidth / 2;
+                    x = after ? left.X + target.ActualWidth : left.X;
+                }
+                else
+                {
+                    // Hovering empty space — snap the line to the trailing edge of the last pill.
+                    x = topBar.ActualWidth - 4;
+                }
+                _pillDropAdorner.SetVertical(x, topBar.ActualHeight);
+            }
+            catch { }
+        }
+
+        private void TopBar_DragLeave(object sender, DragEventArgs e)
+        {
+            var p = e.GetPosition(topBar);
+            if (p.X < 0 || p.Y < 0 || p.X > topBar.ActualWidth || p.Y > topBar.ActualHeight)
+                ClearPillDropAdorner();
         }
 
         private void TopBar_Drop(object sender, DragEventArgs e)
         {
+            ClearPillDropAdorner();
             var dragged = _pillDragging;
             if (dragged == null || !(dragged.Tag is string)) return;
             var target = FindTopBarPill(e.OriginalSource as DependencyObject);
@@ -2209,6 +3098,18 @@ namespace Edi.Forms
             topBar.Children.Insert(after ? ti + 1 : ti, dragged);
             if (btnAddTop != null) { topBar.Children.Remove(btnAddTop); topBar.Children.Add(btnAddTop); }
             SaveTopBarOrder();
+        }
+
+        private void ClearPillDropAdorner()
+        {
+            if (_pillDropAdorner == null) return;
+            try
+            {
+                var layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(topBar);
+                layer?.Remove(_pillDropAdorner);
+            }
+            catch { }
+            _pillDropAdorner = null;
         }
 
         private void AddProgram_Click(object sender, RoutedEventArgs e)
@@ -2292,6 +3193,157 @@ namespace Edi.Forms
             SaveQuickPrograms();
         }
 
+        // "+" menu → MultiFunPlayer: tries the registered/portable install paths first, then
+        // falls back to an Open-File dialog. Same wave icon as Funscript Player.
+        private void AddMultiFunPlayer_Click(object sender, RoutedEventArgs e)
+        {
+            if (QuickPrograms.Any(p => string.Equals(p.Name, "MultiFunPlayer", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemedDialog.Info(this, "MultiFunPlayer", "Already added", "MultiFunPlayer is already on the top bar.");
+                return;
+            }
+
+            // Auto-detect via the same uninstall-key scan that handles Intiface. Falls back to a
+            // shortlist of common portable layouts before asking the user to browse.
+            var hit = AutoDetectPrograms()
+                .FirstOrDefault(p => string.Equals(p.Name, "MultiFunPlayer", StringComparison.OrdinalIgnoreCase));
+            string? path = hit?.Path;
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                foreach (var candidate in new[]
+                {
+                    @"D:\useful\Multi Fun Player\File\MultiFunPlayer.exe",
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "MultiFunPlayer", "MultiFunPlayer.exe"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "MultiFunPlayer", "MultiFunPlayer.exe"),
+                })
+                {
+                    if (File.Exists(candidate)) { path = candidate; break; }
+                }
+            }
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                var dlg = new OpenFileDialog
+                {
+                    Title = "Locate MultiFunPlayer.exe",
+                    Filter = "MultiFunPlayer (*.exe)|MultiFunPlayer.exe|Programs|*.exe;*.lnk|All files|*.*",
+                };
+                if (dlg.ShowDialog(this) != true) return;
+                path = dlg.FileName;
+            }
+
+            QuickPrograms.Add(new QuickProgram { Name = "MultiFunPlayer", Path = path });
+            SaveQuickPrograms();
+        }
+
+        // "+" menu → OpenFunscripter (OFS): the desktop funscript editor. Tries the
+        // registered install via AutoDetectPrograms first (it already knows the "openfunscripter"
+        // uninstall key), then a shortlist of known portable layouts before asking the user to
+        // browse. Distinct pencil-on-wave pill icon set up in MainWindow.xaml.
+        private void AddOfs_Click(object sender, RoutedEventArgs e)
+        {
+            if (QuickPrograms.Any(p => string.Equals(p.Name, "OpenFunscripter", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemedDialog.Info(this, "OpenFunscripter", "Already added", "OpenFunscripter is already on the top bar.");
+                return;
+            }
+
+            var hit = AutoDetectPrograms()
+                .FirstOrDefault(p => string.Equals(p.Name, "OpenFunscripter", StringComparison.OrdinalIgnoreCase));
+            string? path = hit?.Path;
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                foreach (var candidate in new[]
+                {
+                    @"D:\useful\Open Fun Scripter\File\Open Fun Scripter.exe",
+                    @"D:\useful\OpenFunscripter\OpenFunscripter.exe",
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "OpenFunscripter", "OpenFunscripter.exe"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "OpenFunscripter", "OpenFunscripter.exe"),
+                })
+                {
+                    if (File.Exists(candidate)) { path = candidate; break; }
+                }
+            }
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                var dlg = new OpenFileDialog
+                {
+                    Title = "Locate OpenFunscripter.exe",
+                    Filter = "OpenFunscripter (*.exe)|OpenFunscripter.exe;Open Fun Scripter.exe|Programs|*.exe;*.lnk|All files|*.*",
+                };
+                if (dlg.ShowDialog(this) != true) return;
+                path = dlg.FileName;
+            }
+
+            QuickPrograms.Add(new QuickProgram { Name = "OpenFunscripter", Path = path });
+            SaveQuickPrograms();
+        }
+
+        // "+" menu → Glyph: launches Glyph Server (if not already running) then Glyph Client.
+        // Both paths are stashed on the QuickProgram (Path=client, Url=server) so QuickProgram_Click
+        // can fire them in order. Auto-detect the standard install layout first, then ask the
+        // user to browse if it's not where we expect it.
+        private void AddGlyph_Click(object sender, RoutedEventArgs e)
+        {
+            if (QuickPrograms.Any(p => string.Equals(p.Name, "Glyph", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemedDialog.Info(this, "Glyph", "Already added", "Glyph is already on the top bar.");
+                return;
+            }
+
+            string? client = null, server = null;
+            foreach (var c in new[]
+            {
+                @"D:\useful\Glyph\FILE\CLIENT\Glyph Client\Glyph Client.exe",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Glyph", "Glyph Client.exe"),
+            })
+                if (File.Exists(c)) { client = c; break; }
+            foreach (var s in new[]
+            {
+                @"D:\useful\Glyph\FILE\SERVER\Glyph Server\Glyph Server.exe",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Glyph", "Glyph Server.exe"),
+            })
+                if (File.Exists(s)) { server = s; break; }
+
+            if (client == null)
+            {
+                var dlg = new OpenFileDialog
+                {
+                    Title = "Locate Glyph Client.exe",
+                    Filter = "Glyph Client (Glyph Client.exe)|Glyph Client.exe|Programs|*.exe;*.lnk|All files|*.*",
+                };
+                if (dlg.ShowDialog(this) != true) return;
+                client = dlg.FileName;
+            }
+            if (server == null)
+            {
+                var dlg = new OpenFileDialog
+                {
+                    Title = "Locate Glyph Server.exe (the pair-launched server)",
+                    Filter = "Glyph Server (Glyph Server.exe)|Glyph Server.exe|Programs|*.exe;*.lnk|All files|*.*",
+                };
+                if (dlg.ShowDialog(this) == true) server = dlg.FileName;
+                // Optional — if the user cancels, the pill still works for client-only.
+            }
+
+            QuickPrograms.Add(new QuickProgram { Name = "Glyph", Path = client, Url = server ?? "", ShowUrl = false });
+            SaveQuickPrograms();
+        }
+
+        // "+" menu → Stash: URL-only pill that opens http://localhost:9999/ in the browser
+        // (Stash's default address). No exe to detect — the URL itself is the Path so the
+        // generic QuickProgram_Click can ShellExecute it like any web link.
+        private void AddStash_Click(object sender, RoutedEventArgs e)
+        {
+            if (QuickPrograms.Any(p => string.Equals(p.Name, "Stash", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemedDialog.Info(this, "Stash", "Already added", "Stash is already on the top bar.");
+                return;
+            }
+            const string defaultUrl = "http://localhost:9999/";
+            QuickPrograms.Add(new QuickProgram { Name = "Stash", Path = defaultUrl, Url = defaultUrl, ShowUrl = true });
+            SaveQuickPrograms();
+        }
+
         // Default funscript-player location: a "FunscriptPlayer" folder sitting next to Edi.exe.
         // (Script Player games launch through this player and need no EdiConfig.json of their own.)
         private static string DefaultFunscriptPlayerDir =>
@@ -2333,17 +3385,30 @@ namespace Edi.Forms
             SaveQuickPrograms();
         }
 
-        // Right-click → Edit URL: an optional address shown next to the name (like the API Docs link).
+        // Right-click → Edit: for URL-style entries this edits the optional URL shown next to the
+        // name (like the API Docs link); for folder-style entries (Funscript Player etc., where
+        // Path is a directory) it edits the folder Path itself — URL is meaningless there.
         private void EditProgramUrl_Click(object sender, RoutedEventArgs e)
         {
             if ((sender as FrameworkElement)?.DataContext is not QuickProgram p) return;
-            var url = ThemedDialog.Prompt(this, "Edit URL", $"URL for {p.Name}",
-                "Shown next to the name on the quick-launch bar.", p.Url);
-            if (url == null) return;   // cancelled
             int idx = QuickPrograms.IndexOf(p);
             if (idx < 0) return;
-            // Replace the item so the bound subtitle refreshes (QuickProgram isn't observable).
-            QuickPrograms[idx] = new QuickProgram { Name = p.Name, Path = p.Path, Url = url, ShowUrl = p.ShowUrl };
+
+            if (p.IsFolderPath)
+            {
+                var newPath = ThemedDialog.Prompt(this, "Edit Folder Path", $"Folder for {p.Name}",
+                    "The folder this entry opens.", p.Path);
+                if (newPath == null) return;   // cancelled
+                // Replace the item so the bound subtitle refreshes (QuickProgram isn't observable).
+                QuickPrograms[idx] = new QuickProgram { Name = p.Name, Path = newPath, Url = p.Url, ShowUrl = p.ShowUrl };
+            }
+            else
+            {
+                var url = ThemedDialog.Prompt(this, "Edit URL", $"URL for {p.Name}",
+                    "Shown next to the name on the quick-launch bar.", p.Url);
+                if (url == null) return;   // cancelled
+                QuickPrograms[idx] = new QuickProgram { Name = p.Name, Path = p.Path, Url = url, ShowUrl = p.ShowUrl };
+            }
             SaveQuickPrograms();
         }
 
@@ -2359,6 +3424,67 @@ namespace Edi.Forms
 
         // ===================== Top-bar connection chips (Key / EStim / OSR) =====================
         private HashSet<string> _topBarChips = new();
+
+        // Periodic reachability poll for pills that have an IP/URL or a paired server exe.
+        // HTTP/HTTPS URLs → 1.5s GET (HEAD is sometimes refused); Glyph → process check on the
+        // server exe name. Runs every 15s on a background timer; updates IsReachable on the
+        // dispatcher so the pill's status dot binding updates without explicit refresh.
+        private System.Threading.Timer? _statusPollTimer;
+        private static readonly System.Net.Http.HttpClient _statusHttp = new() { Timeout = TimeSpan.FromMilliseconds(1500) };
+
+        private void StartStatusPolling()
+        {
+            if (_statusPollTimer != null) return;
+            _statusPollTimer = new System.Threading.Timer(_ => _ = PollStatusesAsync(), null, 2000, 15000);
+        }
+
+        private async Task PollStatusesAsync()
+        {
+            try
+            {
+                var snapshot = QuickPrograms?.ToList() ?? new List<QuickProgram>();
+                foreach (var p in snapshot)
+                {
+                    if (p == null) continue;
+                    bool? reachable = null;
+
+                    // Glyph: check the server process by name (the exe is in Url).
+                    if (string.Equals(p.Name, "Glyph", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            if (!string.IsNullOrWhiteSpace(p.Url) && File.Exists(p.Url))
+                            {
+                                var name = Path.GetFileNameWithoutExtension(p.Url);
+                                reachable = System.Diagnostics.Process.GetProcessesByName(name).Length > 0;
+                            }
+                        }
+                        catch { reachable = null; }
+                    }
+                    else
+                    {
+                        // Standard URL pill (Stash / browser-launched http(s)://): GET it.
+                        var url = !string.IsNullOrWhiteSpace(p.Url) ? p.Url : p.Path;
+                        bool isUrl = !string.IsNullOrWhiteSpace(url)
+                                    && (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                                     || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+                        if (isUrl)
+                        {
+                            try
+                            {
+                                using var resp = await _statusHttp.GetAsync(url, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+                                reachable = resp.IsSuccessStatusCode || (int)resp.StatusCode < 500;
+                            }
+                            catch { reachable = false; }
+                        }
+                    }
+
+                    var target = p; var r = reachable;
+                    Dispatcher.InvokeAsync(() => { try { target.IsReachable = r; } catch { } });
+                }
+            }
+            catch { /* poll loop must never throw */ }
+        }
 
         private void InitTopBarChips()
         {
@@ -2386,12 +3512,76 @@ namespace Edi.Forms
 
             bool hasKey = !string.IsNullOrWhiteSpace(handyConfig?.Key);
             lblChipKeyLabel.Text   = hasKey ? "Device Key" : "Add Device Key";
-            lblChipKeyVal.Text     = hasKey ? handyConfig.Key : "";
-            lblChipKeyVal.Visibility = hasKey ? Visibility.Visible : Visibility.Collapsed;
+            // Right-click → Show Key reveals the value; default OFF fully hides the value
+            // TextBlock (no dots, no placeholder — the "Device Key" label alone is enough).
+            var s = AppLocalSettings.Load();
+            lblChipKeyVal.Text = hasKey && s.ShowDeviceKey ? handyConfig.Key : "";
+            lblChipKeyVal.Visibility = hasKey && s.ShowDeviceKey ? Visibility.Visible : Visibility.Collapsed;
+            if (miChipKeyShow != null) miChipKeyShow.IsChecked = s.ShowDeviceKey;
             lblChipEStimVal.Text = EStimDisplayName();
             lblChipOSRVal.Text   = string.IsNullOrWhiteSpace(osrConfig?.COMPort) ? "None" : osrConfig.COMPort;
 
+            // Swagger pill URL line — toggled by right-click on the pill.
+            if (lblApiDocsUrl != null)
+                lblApiDocsUrl.Visibility = s.ShowApiDocsUrl ? Visibility.Visible : Visibility.Collapsed;
+            if (miApiDocsShowUrl != null) miApiDocsShowUrl.IsChecked = s.ShowApiDocsUrl;
+
             ApplyTopBarOrder();   // keep newly-shown/hidden chips in their saved drag order
+        }
+
+        // Right-click → Show Key on the chipKey pill: persists to AppLocalSettings and re-renders.
+        private void ChipKeyShow_Click(object sender, RoutedEventArgs e)
+        {
+            var s = AppLocalSettings.Load();
+            s.ShowDeviceKey = miChipKeyShow?.IsChecked == true;
+            s.Save();
+            RefreshTopBarChips();
+        }
+
+        // Right-click → Show URL on the Swagger pill: persists to AppLocalSettings and re-renders.
+        private void ApiDocsShowUrl_Click(object sender, RoutedEventArgs e)
+        {
+            var s = AppLocalSettings.Load();
+            s.ShowApiDocsUrl = miApiDocsShowUrl?.IsChecked == true;
+            s.Save();
+            RefreshTopBarChips();
+        }
+
+        // Hides Add-menu items that would create duplicates: chips already pinned, and the
+        // Intiface / Funscript Player canned programs once they're in QuickPrograms.
+        private void AddTopMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            // Connection chips — hide entries already in _topBarChips. If all three are pinned,
+            // the separator above them stays but only the Add-program row remains useful.
+            if (miAddChipKey   != null) miAddChipKey.Visibility   = _topBarChips.Contains("Key")   ? Visibility.Collapsed : Visibility.Visible;
+            if (miAddChipEStim != null) miAddChipEStim.Visibility = _topBarChips.Contains("EStim") ? Visibility.Collapsed : Visibility.Visible;
+            if (miAddChipOSR   != null) miAddChipOSR.Visibility   = _topBarChips.Contains("OSR")   ? Visibility.Collapsed : Visibility.Visible;
+
+            // Canned programs — hide if the QuickPrograms list already has one with the same Name
+            // (case-insensitive, since users sometimes edit the label).
+            bool hasIntiface = QuickPrograms.Any(p => string.Equals(p?.Name, "Intiface", StringComparison.OrdinalIgnoreCase));
+            bool hasFsPlayer = QuickPrograms.Any(p => string.Equals(p?.Name, "Funscript Player", StringComparison.OrdinalIgnoreCase));
+            bool hasMfp      = QuickPrograms.Any(p => string.Equals(p?.Name, "MultiFunPlayer", StringComparison.OrdinalIgnoreCase));
+            bool hasStash    = QuickPrograms.Any(p => string.Equals(p?.Name, "Stash", StringComparison.OrdinalIgnoreCase));
+            bool hasOfs      = QuickPrograms.Any(p => string.Equals(p?.Name, "OpenFunscripter", StringComparison.OrdinalIgnoreCase));
+            bool hasGlyph    = QuickPrograms.Any(p => string.Equals(p?.Name, "Glyph", StringComparison.OrdinalIgnoreCase));
+            if (miAddIntiface         != null) miAddIntiface.Visibility         = hasIntiface ? Visibility.Collapsed : Visibility.Visible;
+            if (miAddFunscriptPlayer  != null) miAddFunscriptPlayer.Visibility  = hasFsPlayer ? Visibility.Collapsed : Visibility.Visible;
+            if (miAddMultiFunPlayer   != null) miAddMultiFunPlayer.Visibility   = hasMfp      ? Visibility.Collapsed : Visibility.Visible;
+            if (miAddStash            != null) miAddStash.Visibility            = hasStash    ? Visibility.Collapsed : Visibility.Visible;
+            if (miAddOfs              != null) miAddOfs.Visibility              = hasOfs      ? Visibility.Collapsed : Visibility.Visible;
+            if (miAddGlyph            != null) miAddGlyph.Visibility            = hasGlyph    ? Visibility.Collapsed : Visibility.Visible;
+
+            // Hide the program/chip separator when there's nothing in either group to separate.
+            bool anyChip = (miAddChipKey?.Visibility == Visibility.Visible) || (miAddChipEStim?.Visibility == Visibility.Visible) || (miAddChipOSR?.Visibility == Visibility.Visible);
+            bool anyProg = (miAddIntiface?.Visibility == Visibility.Visible)
+                        || (miAddFunscriptPlayer?.Visibility == Visibility.Visible)
+                        || (miAddMultiFunPlayer?.Visibility == Visibility.Visible)
+                        || (miAddStash?.Visibility == Visibility.Visible)
+                        || (miAddOfs?.Visibility == Visibility.Visible)
+                        || (miAddGlyph?.Visibility == Visibility.Visible);
+            if (miAddProgramsSeparator != null)
+                miAddProgramsSeparator.Visibility = (anyChip && anyProg) ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private string EStimDisplayName()
@@ -2436,8 +3626,10 @@ namespace Edi.Forms
         private void EditDeviceKey()
         {
             if (handyConfig == null) return;
+            // Pass the key glyph (Segoe MDL2 E192) so the prompt's header icon matches the
+            // device-key chip in the top bar instead of the generic check-circle.
             var v = ThemedDialog.Prompt(this, "Devices Key", "Devices Key",
-                "Handy / AutoBlow connection key.", handyConfig.Key);
+                "Handy / AutoBlow connection key.", handyConfig.Key, iconGlyph: "");
             if (v == null) return;
             handyConfig.Key = v;
             RefreshTopBarChips();
@@ -2474,13 +3666,22 @@ namespace Edi.Forms
         }
 
         // ===================== Drag-to-reorder the game card list =====================
+        // Richer feedback than the default WPF "system mouse cursor only" drag:
+        //  • The source ListBoxItem dims (opacity 0.35) so its slot reads as "moving"
+        //  • An adorner draws a thin pink insertion line between rows where the drop
+        //    will land, snapping to the half nearest the cursor
+        //  • Both effects are torn down on Drop / DragLeave so nothing lingers if the
+        //    drag is cancelled (Escape) or dropped outside the list
         private System.Windows.Point _gameDragStart;
         private GameInfo? _gameDragItem;
+        private ListBoxItem? _gameDragSourceItem;     // dimmed during drag
+        private DragInsertionAdorner? _gameDropAdorner;
 
         private void lstGames_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             _gameDragStart = e.GetPosition(null);
             _gameDragItem  = FindGameInfoFromVisual(e.OriginalSource as DependencyObject);
+            _gameDragSourceItem = FindListBoxItem(e.OriginalSource as DependencyObject);
         }
 
         private void lstGames_PreviewMouseMove(object sender, MouseEventArgs e)
@@ -2492,12 +3693,64 @@ namespace Edi.Forms
                 return;
 
             var dragged = _gameDragItem;
+            var sourceItem = _gameDragSourceItem;
             _gameDragItem = null;
-            try { DragDrop.DoDragDrop(lstGames, dragged, DragDropEffects.Move); } catch { }
+            _gameDragSourceItem = null;
+
+            // Dim the source row so the user sees what's leaving its slot.
+            if (sourceItem != null) sourceItem.Opacity = 0.35;
+            try
+            {
+                DragDrop.DoDragDrop(lstGames, dragged, DragDropEffects.Move);
+            }
+            finally
+            {
+                if (sourceItem != null) sourceItem.Opacity = 1.0;
+                ClearDropAdorner();
+            }
+        }
+
+        private void lstGames_DragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetData(typeof(GameInfo)) is not GameInfo) { e.Effects = DragDropEffects.None; return; }
+            e.Effects = DragDropEffects.Move;
+            EnsureDropAdorner();
+        }
+
+        // Drives the insertion-line position. Snaps to "above" or "below" the row under
+        // the cursor based on whether the cursor is in the upper or lower half of that row.
+        private void lstGames_DragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetData(typeof(GameInfo)) is not GameInfo) { e.Effects = DragDropEffects.None; return; }
+            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+
+            EnsureDropAdorner();
+            var target = FindListBoxItem(e.OriginalSource as DependencyObject);
+            if (target == null || _gameDropAdorner == null) return;
+
+            try
+            {
+                var pos = e.GetPosition(target);
+                var top = target.TranslatePoint(new System.Windows.Point(0, 0), lstGames);
+                double y = pos.Y < target.ActualHeight / 2 ? top.Y : top.Y + target.ActualHeight;
+                _gameDropAdorner.SetLine(y, lstGames.ActualWidth);
+            }
+            catch { }
+        }
+
+        private void lstGames_DragLeave(object sender, DragEventArgs e)
+        {
+            // Only clear when the cursor actually leaves the list bounds (DragLeave fires for
+            // child items too). A point at the very edge still counts as inside.
+            var p = e.GetPosition(lstGames);
+            if (p.X < 0 || p.Y < 0 || p.X > lstGames.ActualWidth || p.Y > lstGames.ActualHeight)
+                ClearDropAdorner();
         }
 
         private void lstGames_Drop(object sender, DragEventArgs e)
         {
+            ClearDropAdorner();
             if (e.Data.GetData(typeof(GameInfo)) is not GameInfo dragged) return;
             var target = FindGameInfoFromVisual(e.OriginalSource as DependencyObject);
             var list = gamesConfig.GamesInfo;
@@ -2506,6 +3759,40 @@ namespace Edi.Forms
             if (from < 0 || to < 0 || from == to) return;
             list.Move(from, to);
             try { edi.ConfigurationManager.Save(gamesConfig); } catch { }
+        }
+
+        private void EnsureDropAdorner()
+        {
+            if (_gameDropAdorner != null) return;
+            var layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(lstGames);
+            if (layer == null) return;
+            _gameDropAdorner = new DragInsertionAdorner(lstGames);
+            layer.Add(_gameDropAdorner);
+        }
+
+        private void ClearDropAdorner()
+        {
+            if (_gameDropAdorner == null) return;
+            try
+            {
+                var layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(lstGames);
+                layer?.Remove(_gameDropAdorner);
+            }
+            catch { }
+            _gameDropAdorner = null;
+        }
+
+        // Walk up to the nearest ListBoxItem ancestor (not just GameInfo) — needed so we can
+        // dim and measure the row's bounds independently of its DataContext.
+        private static ListBoxItem? FindListBoxItem(DependencyObject? src)
+        {
+            while (src != null && src is not ListBoxItem)
+            {
+                src = (src is System.Windows.Media.Visual || src is System.Windows.Media.Media3D.Visual3D)
+                    ? System.Windows.Media.VisualTreeHelper.GetParent(src)
+                    : LogicalTreeHelper.GetParent(src);
+            }
+            return src as ListBoxItem;
         }
 
         // Walk up from the hit element to the ListBoxItem and return its GameInfo (logical hop for
@@ -2853,31 +4140,34 @@ namespace Edi.Forms
             });
         }
 
-        private static SimulateGame _simulateGame; // Quitamos readonly y la inicialización inmediata
         private MainWindowViewModel viewModel;
         private GamesConfig gamesConfig;
         // ...
-    
-        private void btnSimulator_Click(object sender, RoutedEventArgs e)
-        {
-            // Setting: dock the preview inside the main window instead of a separate window.
-            if (AppLocalSettings.Load().PreviewInMain)
-            {
-                ToggleEmbeddedPreview();
-                return;
-            }
 
-            if (_simulateGame == null || !_simulateGame.IsLoaded)
-            {
-                _simulateGame = new SimulateGame();
-                _simulateGame.Closed += (s, args) => _simulateGame = null;
-                _simulateGame.Show();
-                _simulateGame.Activate();
-            }
-            else
-            {
-                _simulateGame.Close();
-            }
+        // (Action Preview eye button was removed from the Playback transport row. Preview Player
+        // is its own dockable pane — toggle from Settings → Panels → Preview Player.)
+
+        // Lazy-create the PreviewDevice that drives the docked Preview Player's vertical
+        // ProgressBar. Loading it into the DeviceCollector is what makes the playback engine
+        // start streaming positions to it.
+        private PreviewDevice _previewPlayerDevice;
+        private void EnsurePreviewPlayerDevice()
+        {
+            if (_previewPlayerDevice != null) return;
+            _previewPlayerDevice = new PreviewDevice(
+                App.ServiceProvider.GetRequiredService<FunscriptRepository>(),
+                App.ServiceProvider.GetRequiredService<ILogger<PreviewDevice>>());
+            try { edi.DeviceCollector.LoadDevice(_previewPlayerDevice); } catch { }
+            if (PreviewPlayerCard != null) PreviewPlayerCard.DataContext = _previewPlayerDevice;
+        }
+
+        private void TeardownPreviewPlayerDevice()
+        {
+            if (_previewPlayerDevice == null) return;
+            try { _previewPlayerDevice.StopGallery(); } catch { }
+            try { edi.DeviceCollector.UnloadDevice(_previewPlayerDevice); } catch { }
+            _previewPlayerDevice = null;
+            if (PreviewPlayerCard != null) PreviewPlayerCard.DataContext = null;
         }
 
         // ===================== Embedded preview =====================
@@ -2950,12 +4240,16 @@ namespace Edi.Forms
         //  • VIBRATION is an additive vibration OVERLAY (default 0): it adds extra buzz ON TOP of the
         //    playing script for vibrating/oscillating devices, and drives the buzz drawn on the live
         //    Playback preview. It does not mute or scale the script.
+        //  • MINIMUM raises every device's output floor (Min). Default 0 keeps the original Min.
+        //  • PAUSE OUTPUT flag zeros every device's Max while still letting the script play.
+        private bool _liveEditPaused;
         private void ApplyIntensities()
         {
             try
             {
                 int stroke = sliderIntensity != null ? (int)sliderIntensity.Value : 100;
                 int vibe   = sliderVibration != null ? (int)sliderVibration.Value : 0;
+                int floor  = sliderMinimum   != null ? (int)sliderMinimum.Value   : 0;
 
                 // Show the vibration overlay live on the Playback graph (line ripple + dot jitter).
                 try { funscriptPreview.VibrationAmount = vibe; } catch { }
@@ -2966,8 +4260,9 @@ namespace Edi.Forms
                 foreach (var d in edi.Devices)
                 {
                     // Vibration overlay → extra buzz added on top of the script (vibrating actuators only).
+                    // When paused, zero the overlay so the live preview's ripple goes flat too.
                     if (d is Edi.Core.Device.Buttplug.ButtplugDevice b && b.IsVibration)
-                        b.VibrationOverlay01 = overlay;
+                        b.VibrationOverlay01 = _liveEditPaused ? 0 : overlay;
 
                     if (d is not Edi.Core.Device.Interfaces.IRange r) continue;
                     int dmin = 0, dmax = 100;   // sensible default if the device isn't in the config
@@ -2975,11 +4270,48 @@ namespace Edi.Forms
                     {
                         dmin = def.Min; dmax = def.Max;
                     }
-                    // INTENSITY scales every device's output range.
-                    r.Max = dmin + (dmax - dmin) * stroke / 100;
+
+                    if (_liveEditPaused)
+                    {
+                        // Freeze output without stopping playback: pin both ends at the user's MINIMUM
+                        // baseline (or 0 if MINIMUM is also 0) so the device holds still.
+                        int hold = dmin + (dmax - dmin) * floor / 100;
+                        r.Min = hold;
+                        r.Max = hold;
+                        continue;
+                    }
+
+                    // MINIMUM raises the output floor; INTENSITY scales the upper bound. Both are
+                    // expressed as a percentage of the device's configured Min↔Max range, then
+                    // clamped so the floor never crosses above the ceiling.
+                    int newMin = dmin + (dmax - dmin) * floor / 100;
+                    int newMax = dmin + (dmax - dmin) * stroke / 100;
+                    if (newMin > newMax) newMin = newMax;
+                    r.Min = newMin;
+                    r.Max = newMax;
                 }
             }
             catch { /* live tweak — never let a UI slider throw */ }
+        }
+
+        // Pause toggle: holds every device's output at the current MINIMUM baseline (or 0 if
+        // MINIMUM is 0). Playback keeps running so the script timeline stays in sync.
+        private void PauseOutput_Click(object sender, RoutedEventArgs e)
+        {
+            _liveEditPaused = btnPauseOutput?.IsChecked == true;
+            ApplyIntensities();
+        }
+
+        // Reset every Live Edit slider to its default (Intensity 100, Vibration 0, Minimum 0).
+        // Also clears the Pause flag so the user gets a clean baseline.
+        private void ResetLiveEdit_Click(object sender, RoutedEventArgs e)
+        {
+            if (sliderIntensity != null) sliderIntensity.Value = 100;
+            if (sliderVibration != null) sliderVibration.Value = 0;
+            if (sliderMinimum   != null) sliderMinimum.Value   = 0;
+            if (btnPauseOutput  != null) btnPauseOutput.IsChecked = false;
+            _liveEditPaused = false;
+            ApplyIntensities();
         }
 
         private void btnOpenOutput_Click(object sender, RoutedEventArgs e)
@@ -3128,11 +4460,45 @@ namespace Edi.Forms
 
             System.Windows.Media.ImageSource? icon = null;
 
-            // Prefer the folder's custom icon. Pull the real high-res image straight from the
-            // .ico/.exe that desktop.ini points at; otherwise use the shell jumbo (256px) icon.
-            var src = ResolveDesktopIniIcon(folder);
-            if (src != null && System.IO.File.Exists(src.Value.file))
-                icon = FolderIcon.GetHighRes(src.Value.file, 256, src.Value.index);
+            // Icon priority chain (matches the Settings → Games "Find missing icons" info popup):
+            //   1) Manually-set or auto-fetched IconPath (right-click → Icon → …, or library back-fill).
+            //   2) desktop.ini's IconResource / IconFile (custom folder icon).
+            //   3) Any *.ico file sitting directly in the game folder.
+            //   4) Shell jumbo (for folders flagged ReadOnly / customized).
+            //   5) SteamGridDB icon download (handled out-of-band by the library back-fill; surfaces
+            //      here once the file lands in IconPath, so this resolver doesn't make network calls).
+            //   6) Game .exe icon (further below).
+            if (!string.IsNullOrWhiteSpace(g.IconPath) && System.IO.File.Exists(g.IconPath))
+            {
+                try
+                {
+                    var bi = new System.Windows.Media.Imaging.BitmapImage();
+                    bi.BeginInit();
+                    bi.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bi.UriSource = new Uri(g.IconPath);
+                    bi.EndInit();
+                    bi.Freeze();
+                    icon = bi;
+                }
+                catch { /* fall through to folder-icon chain */ }
+            }
+            if (icon == null)
+            {
+                var src = ResolveDesktopIniIcon(folder);
+                if (src != null && System.IO.File.Exists(src.Value.file))
+                    icon = FolderIcon.GetHighRes(src.Value.file, 256, src.Value.index);
+            }
+            if (icon == null)
+            {
+                // Any loose .ico file in the game folder — pick the first one we see.
+                try
+                {
+                    var ico = System.IO.Directory.EnumerateFiles(folder, "*.ico", System.IO.SearchOption.TopDirectoryOnly).FirstOrDefault();
+                    if (ico != null)
+                        icon = FolderIcon.GetHighRes(ico, 256) ?? FolderIcon.GetJumbo(ico) ?? FolderIcon.Get(ico);
+                }
+                catch { /* ignore folder access issues */ }
+            }
             if (icon == null && HasCustomFolderIcon(folder))
                 icon = FolderIcon.GetJumbo(folder) ?? FolderIcon.Get(folder);
 
@@ -3140,12 +4506,30 @@ namespace Edi.Forms
             if (icon == null && !string.IsNullOrWhiteSpace(g.ExePath) && System.IO.File.Exists(g.ExePath))
                 icon = FolderIcon.GetHighRes(g.ExePath, 256) ?? FolderIcon.GetJumbo(g.ExePath) ?? FolderIcon.Get(g.ExePath);
 
+            // Last resort: the game's downloaded cover (auto-fetched via SteamGridDB / DLsite / F95).
+            // Lets games with no folder-icon or exe-icon still show something representative on the card.
+            if (icon == null && !string.IsNullOrWhiteSpace(g.ImagePath) && System.IO.File.Exists(g.ImagePath))
+            {
+                try
+                {
+                    var bi = new System.Windows.Media.Imaging.BitmapImage();
+                    bi.BeginInit();
+                    bi.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bi.UriSource = new Uri(g.ImagePath);
+                    bi.EndInit();
+                    bi.Freeze();
+                    icon = bi;
+                }
+                catch { /* leave icon null */ }
+            }
+
             _cache[folder] = icon;
             return icon;
         }
 
         // Parse desktop.ini for the custom icon's source file + index (IconResource, or IconFile/IconIndex).
-        private static (string file, int index)? ResolveDesktopIniIcon(string folder)
+        // Internal so MainWindow.CacheFolderIcon (right-click → Icon → Use folder icon) can reuse it.
+        internal static (string file, int index)? ResolveDesktopIniIcon(string folder)
         {
             try
             {
@@ -3435,6 +4819,84 @@ namespace Edi.Forms
                 finally { DestroyIcon(shfi.hIcon); }
             }
             catch { return null; }
+        }
+    }
+
+    // Thin pink line + soft glow drawn into an adorner layer to show where a dragged item
+    // will land. Used for both the vertical games list (Horizontal=false → horizontal line
+    // between rows) and the horizontal top-bar pills (Horizontal=true → vertical line between
+    // pills). Either way the indicator is hit-test invisible and rebuilt on each DragOver.
+    internal sealed class DragInsertionAdorner : System.Windows.Documents.Adorner
+    {
+        private double _y;
+        private double _w;
+        private bool _horizontal;   // true → vertical line spanning the bar height
+        private double _spanLen;    // perpendicular length (height for vertical, width for horizontal)
+        private static readonly System.Windows.Media.Pen _pen = MakePen();
+        private static System.Windows.Media.Pen MakePen()
+        {
+            var brush = new System.Windows.Media.LinearGradientBrush
+            {
+                StartPoint = new System.Windows.Point(0, 0),
+                EndPoint   = new System.Windows.Point(1, 0),
+            };
+            brush.GradientStops.Add(new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0x33, 0xFF, 0x2D, 0x8C), 0.0));
+            brush.GradientStops.Add(new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0xFF, 0xFF, 0x2D, 0x8C), 0.5));
+            brush.GradientStops.Add(new System.Windows.Media.GradientStop(System.Windows.Media.Color.FromArgb(0x33, 0xFF, 0x2D, 0x8C), 1.0));
+            brush.Freeze();
+            var pen = new System.Windows.Media.Pen(brush, 2.5);
+            pen.Freeze();
+            return pen;
+        }
+
+        public DragInsertionAdorner(System.Windows.UIElement adornedElement) : base(adornedElement)
+        {
+            IsHitTestVisible = false;
+            UseLayoutRounding = true;
+            SnapsToDevicePixels = true;
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = System.Windows.Media.Color.FromRgb(0xFF, 0x2D, 0x8C),
+                BlurRadius = 8,
+                ShadowDepth = 0,
+                Opacity = 0.7,
+            };
+        }
+
+        // Horizontal-line API (games list): y is the Y coord in adorned coords, width is the span.
+        public void SetLine(double y, double width)
+        {
+            if (!_horizontal == false && _y == y && _w == width) return;
+            _horizontal = false; _y = y; _w = width;
+            InvalidateVisual();
+        }
+
+        // Vertical-line API (top bar): x is the X coord in adorned coords, height is the span.
+        public void SetVertical(double x, double height)
+        {
+            if (_horizontal && _y == x && _spanLen == height) return;
+            _horizontal = true; _y = x; _spanLen = height;
+            InvalidateVisual();
+        }
+
+        protected override void OnRender(System.Windows.Media.DrawingContext dc)
+        {
+            var dot = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x2D, 0x8C));
+            dot.Freeze();
+            if (_horizontal)
+            {
+                if (_spanLen <= 0) return;
+                dc.DrawLine(_pen, new System.Windows.Point(_y, 2), new System.Windows.Point(_y, _spanLen - 2));
+                dc.DrawEllipse(dot, null, new System.Windows.Point(_y, 2), 3, 3);
+                dc.DrawEllipse(dot, null, new System.Windows.Point(_y, _spanLen - 2), 3, 3);
+            }
+            else
+            {
+                if (_w <= 0) return;
+                dc.DrawLine(_pen, new System.Windows.Point(2, _y), new System.Windows.Point(_w - 2, _y));
+                dc.DrawEllipse(dot, null, new System.Windows.Point(2, _y), 3, 3);
+                dc.DrawEllipse(dot, null, new System.Windows.Point(_w - 2, _y), 3, 3);
+            }
         }
     }
 }

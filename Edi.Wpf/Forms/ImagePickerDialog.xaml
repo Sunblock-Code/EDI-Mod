@@ -1,0 +1,108 @@
+<Window x:Class="Edi.Forms.ImagePickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Choose icon"
+        Icon="pack://application:,,,/Edi.ico"
+        Height="560" Width="640"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource App.WindowBg}"
+        Foreground="{DynamicResource App.Text}"
+        FontFamily="{DynamicResource App.FontFamily}"
+        FontSize="{DynamicResource App.FontSize}"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        UseLayoutRounding="True">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/Themes/ModernTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid>
+        <Border VerticalAlignment="Top" Height="2" Background="{DynamicResource App.Accent}"/>
+
+        <Grid Margin="14,16,14,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" x:Name="lblHint"
+                       Foreground="{DynamicResource App.TextMuted}" FontSize="12" TextWrapping="Wrap"
+                       Margin="2,0,2,10"
+                       Text="Click a thumbnail to pick it. The 'Fetch more' button at the bottom searches SteamGridDB for additional variants."/>
+
+            <Border Grid.Row="1" Background="{DynamicResource App.InputBg}" BorderBrush="{DynamicResource App.Border}"
+                    BorderThickness="1" CornerRadius="4">
+                <ListBox x:Name="lstItems" Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         SelectionChanged="Items_SelectionChanged"
+                         MouseDoubleClick="Items_DoubleClick">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Margin" Value="6"/>
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="bd" Background="{DynamicResource App.PanelBgHi}"
+                                                BorderBrush="{DynamicResource App.Border}" BorderThickness="1"
+                                                CornerRadius="6" Padding="4">
+                                            <ContentPresenter/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource App.BorderStrong}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource App.Accent}"/>
+                                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource App.RowSelect}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Width="140">
+                                <Border Height="140" Background="#11141B" CornerRadius="4" ClipToBounds="True">
+                                    <Image Source="{Binding Thumb}" Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                                </Border>
+                                <TextBlock Text="{Binding Label}" Foreground="{DynamicResource App.TextMuted}"
+                                           FontSize="11" TextAlignment="Center" TextTrimming="CharacterEllipsis"
+                                           Margin="0,5,0,0"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <TextBlock Grid.Row="2" x:Name="lblStatus" Foreground="{DynamicResource App.TextMuted}"
+                       FontSize="12" Margin="2,10,2,0" TextWrapping="Wrap"/>
+
+            <Border Grid.Row="3" Background="{DynamicResource App.HeaderBg}" BorderBrush="{DynamicResource App.Border}"
+                    BorderThickness="0,1,0,0" Margin="-14,12,-14,-12" Padding="14,12">
+                <DockPanel LastChildFill="False">
+                    <Button x:Name="btnFetchMore" DockPanel.Dock="Left" Content="Fetch more"
+                            Style="{StaticResource DialogButton}" Click="FetchMore_Click"/>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button x:Name="btnCancel" Content="Cancel" Style="{StaticResource DialogButton}" Click="Cancel_Click" IsCancel="True"/>
+                        <Button x:Name="btnUse" Content="Use" Style="{StaticResource DialogButtonAccent}" Click="Use_Click" IsEnabled="False"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

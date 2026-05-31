@@ -383,3 +383,6 @@ EdiLayout.config
 **/EdiLayout.config
 covers/
 **/covers/
+
+# Local single-file publish output (used by deploy scripts)
+_deploy_publish/

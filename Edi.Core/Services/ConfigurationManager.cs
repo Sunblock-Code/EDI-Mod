@@ -142,6 +142,12 @@ namespace Edi.Core.Services
             Directory.CreateDirectory(Path.GetDirectoryName(_userConfigPath)!);
             File.WriteAllText(_userConfigPath, userConfigJson);
         }
+        // Computes WHERE the game's EdiConfig.json would live but no longer creates it
+        // up-front. If the game folder already has one, it's still loaded normally
+        // (LoadCombinedConfigurations handles a missing file gracefully). If the user later
+        // changes a per-game setting, Save() will lazily create the file at this resolved
+        // path. Games that don't have one — and don't need any per-game tweaks — stay
+        // completely untouched on disk; their config sections come from the class defaults.
         private string EnsureGameConfigFile(string path)
         {
             string configFilePath;
@@ -158,32 +164,9 @@ namespace Edi.Core.Services
             }
             else
             {
-                // Si es un path que no existe, asumimos que es un archivo y usamos su carpeta
+                // Path doesn't exist — treat it as a file path and use its parent folder.
                 var dir = Path.GetDirectoryName(path);
                 configFilePath = Path.Combine(dir ?? ".", "EdiConfig.json");
-            }
-
-            bool shouldCreate = !File.Exists(configFilePath) || new FileInfo(configFilePath).Length == 0;
-            if (shouldCreate)
-            {
-                var configTypes = AppDomain.CurrentDomain.GetAssemblies()
-                    .SelectMany(a => a.GetTypes())
-                    .Where(t => t.IsClass && t.Name.EndsWith("Config") && t.GetConstructor(Type.EmptyTypes) != null && Attribute.IsDefined(t, typeof(GameConfigAttribute)))
-                    .ToList();
-                var configDict = new Dictionary<string, JObject>();
-                foreach (var type in configTypes)
-                {
-                    try
-                    {
-                        var instance = Activator.CreateInstance(type);
-                        var key = type.Name.Replace("Config", "");
-                        configDict[key] = JObject.FromObject(instance);
-                    }
-                    catch { }
-                }
-                var json = JsonConvert.SerializeObject(configDict, Formatting.Indented);
-                Directory.CreateDirectory(Path.GetDirectoryName(configFilePath)!);
-                File.WriteAllText(configFilePath, json);
             }
             return configFilePath;
         }
@@ -257,6 +240,17 @@ namespace Edi.Core.Services
             // Guardar solo en el archivo correspondiente si hay cambios
             if (existingConfigs.Count > 0)
             {
+                if (string.IsNullOrWhiteSpace(targetPath)) return;   // no game selected yet — no-op
+                // Now that game EdiConfig.json is created LAZILY (no longer proactively in
+                // EnsureGameConfigFile), the parent folder might not exist on this code path.
+                // CreateDirectory is a no-op when the folder already exists, so it's safe.
+                try
+                {
+                    var dir = Path.GetDirectoryName(targetPath);
+                    if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+                }
+                catch { /* read-only game folder etc. — let the FileStream throw the real error */ }
+
                 var json = JsonConvert.SerializeObject(existingConfigs, Formatting.Indented);
                 FileStream fileStream = null;
                 int maxRetries = 10; // Maximum number of retries

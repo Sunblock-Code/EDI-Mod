@@ -1,0 +1,100 @@
+<Window x:Class="Edi.Forms.CreateShortcutDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Create shortcut"
+        Icon="pack://application:,,,/Edi.ico"
+        Width="520" SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource App.WindowBg}"
+        Foreground="{DynamicResource App.Text}"
+        FontFamily="{DynamicResource App.FontFamily}"
+        FontSize="{DynamicResource App.FontSize}"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="ClearType"
+        UseLayoutRounding="True">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/Themes/ModernTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid>
+        <Border VerticalAlignment="Top" Height="2" Background="{DynamicResource App.Accent}"/>
+
+        <StackPanel Margin="20,18,20,16">
+            <TextBlock x:Name="lblHeader" FontSize="15" FontWeight="SemiBold" Foreground="#FFFFFF" Margin="0,0,0,4"/>
+            <TextBlock Foreground="{DynamicResource App.TextMuted}" FontSize="12" TextWrapping="Wrap"
+                       Text="Generates a .lnk on the chosen location. The shortcut runs a small launcher that starts the picked target plus every program toggled on below — all with the game's icon."/>
+
+            <!-- ===== Launch target ===== -->
+            <Border Margin="0,14,0,0" Background="{DynamicResource App.PanelBg}"
+                    BorderBrush="{DynamicResource App.Border}" BorderThickness="1" CornerRadius="6" Padding="12,10">
+                <StackPanel>
+                    <TextBlock Text="LAUNCH TARGET" Foreground="{DynamicResource App.TextMuted}"
+                               FontSize="10" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <ComboBox x:Name="cmbTarget" Height="32" VerticalContentAlignment="Center" FontSize="13"
+                              DisplayMemberPath="Label"/>
+                    <TextBlock x:Name="lblTargetPath" Foreground="{DynamicResource App.TextDim}" FontSize="11"
+                               TextWrapping="Wrap" Margin="0,6,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== Auto-start programs ===== -->
+            <Border Margin="0,10,0,0" Background="{DynamicResource App.PanelBg}"
+                    BorderBrush="{DynamicResource App.Border}" BorderThickness="1" CornerRadius="6" Padding="12,10">
+                <StackPanel>
+                    <TextBlock Text="ALSO START" Foreground="{DynamicResource App.TextMuted}"
+                               FontSize="10" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <ItemsControl x:Name="icPrograms">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox Style="{StaticResource ToggleSwitch}" Margin="0,4,0,4"
+                                          IsChecked="{Binding Include, Mode=TwoWay}"
+                                          Content="{Binding DisplayName}"
+                                          ToolTip="{Binding Program.Path}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock x:Name="lblNoPrograms"
+                               Foreground="{DynamicResource App.TextDim}" FontSize="11" TextWrapping="Wrap"
+                               Text="No quick programs configured. Add launcher pills at the top of EDI to make them selectable here."
+                               Visibility="Collapsed"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== Save location ===== -->
+            <Border Margin="0,10,0,0" Background="{DynamicResource App.PanelBg}"
+                    BorderBrush="{DynamicResource App.Border}" BorderThickness="1" CornerRadius="6" Padding="12,10">
+                <StackPanel>
+                    <TextBlock Text="SAVE SHORTCUT TO" Foreground="{DynamicResource App.TextMuted}"
+                               FontSize="10" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="8"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" x:Name="txtSavePath" Height="30" VerticalContentAlignment="Center" FontSize="12"/>
+                        <Button Grid.Column="2" Content="Browse…" Height="30" Width="88"
+                                BorderBrush="{DynamicResource App.Border}" BorderThickness="1"
+                                Click="Browse_Click"/>
+                    </Grid>
+                    <TextBlock Foreground="{DynamicResource App.TextDim}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                               Text="Pick any folder. The .lnk is named after the game; existing shortcuts with the same name are overwritten."/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+
+        <Border VerticalAlignment="Bottom" Background="{DynamicResource App.HeaderBg}"
+                BorderBrush="{DynamicResource App.Border}" BorderThickness="0,1,0,0" Padding="14,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btnCancel" Content="Cancel" Style="{StaticResource DialogButton}" Click="Cancel_Click" IsCancel="True"/>
+                <Button x:Name="btnCreate" Content="Create" Style="{StaticResource DialogButtonAccent}" Click="Create_Click" IsDefault="True"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

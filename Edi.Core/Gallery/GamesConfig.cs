@@ -23,6 +23,9 @@ namespace Edi.Core
         public string? GalleryPath { get; init; }
         public string? InfoPath { get; init; }
         public string? ImagePath { get; init; }
+        // Optional manually-set or auto-fetched icon (separate from ImagePath, which is the banner).
+        // When non-null and the file exists, the card resolver uses this BEFORE any folder/exe icon.
+        public string? IconPath { get; init; }
         public string? GameType { get; init; }   // "EDI" (default) or "ScriptPlayer"
 
         // Extra named launch targets shown in the Launch button's dropdown (the main ExePath is the

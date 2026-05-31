@@ -8,13 +8,14 @@ namespace Edi.Forms
         private readonly string? _requiredText;
 
         public ThemedDialog(string title, string header, string body, bool yesNo, string? requiredText = null,
-                            bool freeInput = false, string? initialText = null)
+                            bool freeInput = false, string? initialText = null, string? iconGlyph = null)
         {
             DarkTitleBar.Apply(this);
             InitializeComponent();
             Title = title;
             lblHeader.Text = header;
             lblBody.Text = body;
+            if (!string.IsNullOrEmpty(iconGlyph)) icon.Text = iconGlyph;
             if (!yesNo)
             {
                 btnNo.Visibility = Visibility.Collapsed;
@@ -53,9 +54,11 @@ namespace Edi.Forms
         }
 
         // Themed free-text prompt. Returns the trimmed input, or null if cancelled.
-        public static string? Prompt(Window owner, string title, string header, string body, string? initialText = null)
+        // iconGlyph (optional) overrides the default check-circle with any Segoe MDL2 codepoint
+        // (e.g. "" for the device-key icon to match the top-bar chip).
+        public static string? Prompt(Window owner, string title, string header, string body, string? initialText = null, string? iconGlyph = null)
         {
-            var dlg = new ThemedDialog(title, header, body, yesNo: true, freeInput: true, initialText: initialText) { Owner = owner };
+            var dlg = new ThemedDialog(title, header, body, yesNo: true, freeInput: true, initialText: initialText, iconGlyph: iconGlyph) { Owner = owner };
             return dlg.ShowDialog() == true ? dlg.txtInput.Text.Trim() : null;
         }
 

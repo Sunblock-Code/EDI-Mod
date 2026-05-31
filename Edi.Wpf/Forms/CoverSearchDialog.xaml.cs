@@ -590,5 +590,200 @@ namespace Edi.Forms
             }
             return results;
         }
+
+        // Icon-specific search (small square art). Mirrors SearchSteamGridDbAsync but hits the
+        // /icons endpoint, which returns purpose-built game icons rather than capsule covers.
+        // Used by the right-click "Icon → Fetch icon" menu and the library-wide icon back-fill.
+        public static async Task<List<CoverResult>> SearchSteamGridDbIconsAsync(string term)
+        {
+            var results = new List<CoverResult>();
+            var key = Edi.Core.Services.AppLocalSettings.Load().SteamGridDbApiKey?.Trim();
+            if (string.IsNullOrWhiteSpace(key)) return results;
+
+            async Task<string?> ApiGet(string url)
+            {
+                try
+                {
+                    using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                    req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + key);
+                    using var resp = await _http.SendAsync(req);
+                    return resp.IsSuccessStatusCode ? await resp.Content.ReadAsStringAsync() : null;
+                }
+                catch { return null; }
+            }
+
+            // 1) Find matching games by name (same autocomplete endpoint as the cover search).
+            var games = new List<(int id, string name)>();
+            var searchJson = await ApiGet($"https://www.steamgriddb.com/api/v2/search/autocomplete/{Uri.EscapeDataString(term)}");
+            if (searchJson == null) return results;
+            try
+            {
+                using var doc = JsonDocument.Parse(searchJson);
+                if (doc.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array)
+                    foreach (var g in data.EnumerateArray())
+                    {
+                        if (g.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.Number)
+                        {
+                            var nm = g.TryGetProperty("name", out var nmEl) ? nmEl.GetString() ?? "" : "";
+                            games.Add((idEl.GetInt32(), nm));
+                        }
+                        if (games.Count >= 3) break;
+                    }
+            }
+            catch { return results; }
+
+            // 2) Pull each top game's icons.
+            foreach (var (id, name) in games)
+            {
+                var iconsJson = await ApiGet($"https://www.steamgriddb.com/api/v2/icons/game/{id}?limit=12");
+                if (iconsJson == null) continue;
+                try
+                {
+                    using var doc = JsonDocument.Parse(iconsJson);
+                    if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array) continue;
+                    foreach (var ic in data.EnumerateArray())
+                    {
+                        var url = ic.TryGetProperty("url", out var u) ? u.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(url)) continue;
+                        var thumb = ic.TryGetProperty("thumb", out var th) ? th.GetString() : url;
+                        results.Add(new CoverResult
+                        {
+                            Label = string.IsNullOrWhiteSpace(name) ? "SteamGridDB icon" : $"{name} · icon",
+                            ImageUrl = url!,
+                            ThumbUrl = thumb ?? url!
+                        });
+                        if (results.Count >= 24) break;
+                    }
+                }
+                catch { }
+                if (results.Count >= 24) break;
+            }
+            return results;
+        }
+
+        // Result row for a found video preview/trailer. Url is the direct .mp4 link the
+        // caller will download; ThumbUrl is the poster image for the picker; Label is for UI.
+        public sealed class VideoResult
+        {
+            public string Url      { get; set; } = "";
+            public string ThumbUrl { get; set; } = "";
+            public string Label    { get; set; } = "";
+            public string PageUrl  { get; set; } = "";
+        }
+
+        // Walks a DLsite product page for the user's term and pulls any <video> / "trial" /
+        // sample .mp4 URLs it can see. DLsite serves preview videos under media.dlsite.jp or
+        // img.dlsite.jp; multiple match shapes are caught so localized markup still works.
+        public static async Task<List<VideoResult>> SearchDlsiteVideosAsync(string term)
+        {
+            var results = new List<VideoResult>();
+            // Reuse the existing image search so we know which product page to fetch — its
+            // PageUrl points at the product's full HTML where the video markup lives.
+            List<CoverResult> hits;
+            try { hits = await SearchDlsiteAsync(term); } catch { return results; }
+
+            var rxVid = new Regex(@"(https?:)?//(?:media|img)\.dlsite\.jp[^""'\s<>\\]+?\.mp4", RegexOptions.IgnoreCase);
+            var seen  = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var h in hits.Take(4))
+            {
+                if (string.IsNullOrWhiteSpace(h.PageUrl)) continue;
+                var html = await GetHtmlAsync(h.PageUrl);
+                if (html == null) continue;
+                foreach (Match m in rxVid.Matches(html))
+                {
+                    var u = m.Value.Replace("\\/", "/");
+                    if (u.StartsWith("//")) u = "https:" + u;
+                    if (!seen.Add(u)) continue;
+                    results.Add(new VideoResult { Url = u, ThumbUrl = h.ImageUrl, PageUrl = h.PageUrl, Label = $"{h.Label} · DLsite" });
+                    if (results.Count >= 12) break;
+                }
+                if (results.Count >= 12) break;
+            }
+            return results;
+        }
+
+        // itch.io games embed previews as <video src="https://img.itch.zone/.../*.mp4"> tags
+        // (sometimes lazy-loaded via data-src). Walks the top game pages from the existing
+        // text search and collects every preview URL it sees.
+        public static async Task<List<VideoResult>> SearchItchVideosAsync(string term)
+        {
+            var results = new List<VideoResult>();
+            List<CoverResult> hits;
+            try { hits = await SearchItchAsync(term); } catch { return results; }
+
+            var rxVid = new Regex(@"https://img\.itch\.zone/[^""'\s<>\\]+?\.mp4", RegexOptions.IgnoreCase);
+            var rxDataSrc = new Regex(@"data-src=""(https://img\.itch\.zone/[^""]+\.mp4)""", RegexOptions.IgnoreCase);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var h in hits.Take(4))
+            {
+                if (string.IsNullOrWhiteSpace(h.PageUrl)) continue;
+                var html = await GetHtmlAsync(h.PageUrl);
+                if (html == null) continue;
+                foreach (Match m in rxVid.Matches(html))
+                {
+                    if (!seen.Add(m.Value)) continue;
+                    results.Add(new VideoResult { Url = m.Value, ThumbUrl = h.ImageUrl, PageUrl = h.PageUrl, Label = $"{h.Label} · itch.io" });
+                    if (results.Count >= 12) break;
+                }
+                foreach (Match m in rxDataSrc.Matches(html))
+                {
+                    if (!seen.Add(m.Groups[1].Value)) continue;
+                    results.Add(new VideoResult { Url = m.Groups[1].Value, ThumbUrl = h.ImageUrl, PageUrl = h.PageUrl, Label = $"{h.Label} · itch.io" });
+                    if (results.Count >= 12) break;
+                }
+                if (results.Count >= 12) break;
+            }
+            return results;
+        }
+
+        // Auto-find: DLsite first (usually higher-quality trailers), then itch.io fallback.
+        // Returns the first URL it can find, or null if neither source has a preview clip.
+        public static async Task<string?> AutoFindVideoAsync(string gameName)
+        {
+            if (string.IsNullOrWhiteSpace(gameName)) return null;
+            try
+            {
+                var dl = await SearchDlsiteVideosAsync(gameName);
+                if (dl.Count > 0) return dl[0].Url;
+            }
+            catch { }
+            try
+            {
+                var it = await SearchItchVideosAsync(gameName);
+                if (it.Count > 0) return it[0].Url;
+            }
+            catch { }
+            return null;
+        }
+
+        // Combined picker: DLsite + itch.io results in one list so the picker dialog can
+        // show every available preview at once.
+        public static async Task<List<VideoResult>> SearchAllVideosAsync(string gameName)
+        {
+            var all = new List<VideoResult>();
+            try { all.AddRange(await SearchDlsiteVideosAsync(gameName)); } catch { }
+            try { all.AddRange(await SearchItchVideosAsync(gameName));   } catch { }
+            return all;
+        }
+
+        // Auto-find for an icon. Tries SteamGridDB's /icons endpoint first (real icon assets),
+        // then falls back to the same cover-source chain AutoFindAsync uses (DLsite → F95 →
+        // itch.io → SteamGridDB grids). Cover-art images work fine as icon stand-ins when the
+        // game has no purpose-built icon online.
+        public static async Task<string?> AutoFindIconAsync(string gameName)
+        {
+            if (string.IsNullOrWhiteSpace(gameName)) return null;
+            // Prefer real icon assets when available.
+            try
+            {
+                var iconHits = await SearchSteamGridDbIconsAsync(gameName);
+                var icon = iconHits.FirstOrDefault()?.ImageUrl;
+                if (!string.IsNullOrWhiteSpace(icon)) return icon;
+            }
+            catch { }
+            // Fall back to the multi-source cover chain — same one banners use.
+            try { return await AutoFindAsync(gameName); }
+            catch { return null; }
+        }
     }
 }

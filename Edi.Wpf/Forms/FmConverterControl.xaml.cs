@@ -276,43 +276,67 @@ namespace Edi.Forms
 
         // ───────── source selection ─────────
 
+        // Source = a GALLERY (group of related .funscript files sharing a base name), not a
+        // single funscript. e.g. gallery "SmaGuong" includes "SmaGuong.funscript" +
+        // "SmaGuong.pitch.funscript" + "SmaGuong.roll.funscript". Converting a gallery emits a
+        // NEW gallery (same axis files) under the variant subfolder named after the device profile.
         private class SourceItem
         {
-            public string Display { get; set; }
-            public string Path { get; set; }
+            public string Display { get; set; }     // gallery name (no .funscript extension)
+            public string Path    { get; set; }     // canonical path: the first/main file in the gallery (used for "default source" rehydration)
+            public List<string> Files { get; set; } = new();   // every .funscript file in this gallery (main + axis variants)
             public override string ToString() => Display;
         }
 
-        private void PopulateSources(string defaultSource)
+        // Walk the gallery folder, group every *.funscript by the base name BEFORE the first dot
+        // (so "SmaGuong.pitch.funscript" lives in the same group as "SmaGuong.funscript"). The
+        // dropdown shows one row per gallery, hiding the axis-file noise.
+        private void PopulateSources(string defaultSourceFile)
         {
             var items = new List<SourceItem>();
             try
             {
                 if (!string.IsNullOrWhiteSpace(_galleryPath) && Directory.Exists(_galleryPath))
                 {
-                    var baseDir = new DirectoryInfo(_galleryPath).FullName.TrimEnd('\\') + "\\";
-                    foreach (var f in Directory.EnumerateFiles(_galleryPath, "*.funscript", SearchOption.AllDirectories)
-                                                .OrderBy(p => p))
+                    var groups = Directory.EnumerateFiles(_galleryPath, "*.funscript", SearchOption.AllDirectories)
+                        .OrderBy(p => p)
+                        .GroupBy(p => Path.GetFileNameWithoutExtension(p).Split('.')[0], StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var g in groups)
                     {
-                        items.Add(new SourceItem { Path = f, Display = f.StartsWith(baseDir) ? f.Substring(baseDir.Length) : Path.GetFileName(f) });
+                        var files = g.OrderBy(p => p).ToList();
+                        items.Add(new SourceItem
+                        {
+                            Display = g.Key,
+                            Path    = files[0],
+                            Files   = files,
+                        });
                     }
+                    items = items.OrderBy(i => i.Display, StringComparer.OrdinalIgnoreCase).ToList();
                 }
             }
             catch { }
 
             cmbSource.ItemsSource = items;
             cmbSource.DisplayMemberPath = nameof(SourceItem.Display);
-            if (!string.IsNullOrWhiteSpace(defaultSource))
+            if (!string.IsNullOrWhiteSpace(defaultSourceFile))
             {
-                var match = items.FirstOrDefault(i => string.Equals(i.Path, defaultSource, StringComparison.OrdinalIgnoreCase));
-                if (match != null) cmbSource.SelectedItem = match;
+                // Try to match by file path first (so re-opening preserves the selection), then by
+                // gallery name as a fallback for cases where the user picked a Browse'd file.
+                var matchByFile = items.FirstOrDefault(i => i.Files.Any(f => string.Equals(f, defaultSourceFile, StringComparison.OrdinalIgnoreCase)));
+                if (matchByFile != null) cmbSource.SelectedItem = matchByFile;
             }
             if (cmbSource.SelectedItem == null && items.Count > 0) cmbSource.SelectedIndex = 0;
         }
 
+        private SourceItem SelectedSourceGallery() => cmbSource?.SelectedItem as SourceItem;
+
+        // Back-compat: callers that just need "a representative path" (output-path preview,
+        // metadata read, default-source persistence) can grab the first file of the gallery.
         private string SelectedSourcePath()
         {
-            if (cmbSource?.SelectedItem is SourceItem si) return si.Path;
+            var g = SelectedSourceGallery();
+            if (g != null && g.Files.Count > 0) return g.Files[0];
             return cmbSource?.Tag as string;   // set by Browse for an out-of-folder file
         }
 
@@ -327,14 +351,26 @@ namespace Edi.Forms
             };
             if (dlg.ShowDialog(Window.GetWindow(this)) == true)
             {
-                var si = new SourceItem { Path = dlg.FileName, Display = Path.GetFileName(dlg.FileName) };
+                // Browse selects a single file but we still want to treat it as a gallery — scan its
+                // folder for sibling axis files (Name.pitch.funscript, Name.roll.funscript, …) and
+                // group them under the base name.
+                var dir = Path.GetDirectoryName(dlg.FileName) ?? "";
+                var galleryName = Path.GetFileNameWithoutExtension(dlg.FileName).Split('.')[0];
+                var siblings = Directory.Exists(dir)
+                    ? Directory.EnumerateFiles(dir, "*.funscript", SearchOption.TopDirectoryOnly)
+                                .Where(f => string.Equals(Path.GetFileNameWithoutExtension(f).Split('.')[0], galleryName, StringComparison.OrdinalIgnoreCase))
+                                .OrderBy(f => f).ToList()
+                    : new List<string> { dlg.FileName };
+                if (siblings.Count == 0) siblings.Add(dlg.FileName);
+
+                var si = new SourceItem { Path = siblings[0], Display = galleryName, Files = siblings };
                 var list = (cmbSource.ItemsSource as List<SourceItem>) ?? new List<SourceItem>();
-                if (!list.Any(i => string.Equals(i.Path, si.Path, StringComparison.OrdinalIgnoreCase)))
+                if (!list.Any(i => string.Equals(i.Display, si.Display, StringComparison.OrdinalIgnoreCase)))
                 {
                     list = new List<SourceItem>(list) { si };
                     cmbSource.ItemsSource = list;
                 }
-                cmbSource.SelectedItem = list.First(i => string.Equals(i.Path, si.Path, StringComparison.OrdinalIgnoreCase));
+                cmbSource.SelectedItem = list.First(i => string.Equals(i.Display, si.Display, StringComparison.OrdinalIgnoreCase));
             }
         }
 
@@ -358,33 +394,44 @@ namespace Edi.Forms
         private void UpdateOutputPath()
         {
             if (lblOutPath == null) return;
-            var outPath = ComputeOutputPath(SelectedSourcePath(), txtVariant?.Text);
-            lblOutPath.Text = outPath == null
-                ? ""
-                : "→ " + Path.GetFileName(Path.GetDirectoryName(outPath)) + "\\" + Path.GetFileName(outPath);
+            var g = SelectedSourceGallery();
+            var v = SanitizeVariant(txtVariant?.Text);
+            if (string.IsNullOrEmpty(v)) v = "FM";
+            if (g == null) { lblOutPath.Text = ""; return; }
+
+            // Show "→ <variant>\<gallery>.funscript (+N axis files)" so the user knows the whole
+            // gallery is going to land in the new subfolder, not just the main file.
+            var first = ComputeOutputPath(g.Files[0], v);
+            string preview = "→ " + Path.GetFileName(Path.GetDirectoryName(first)) + "\\" + Path.GetFileName(first);
+            if (g.Files.Count > 1) preview += $"  (+{g.Files.Count - 1} axis file{(g.Files.Count == 2 ? "" : "s")})";
+            lblOutPath.Text = preview;
         }
 
         // Converted scripts are saved into a SUBFOLDER of the gallery named after the variant
-        // (e.g. Gallery\Hismith\Scene.funscript). EDI's discovery treats the subfolder name as the
-        // variant, so it shows up per-device in "Selected Variant". The original is never touched.
+        // (e.g. Gallery\HismithPro1\SmaGuong.funscript + Gallery\HismithPro1\SmaGuong.pitch.funscript).
+        // EDI's discovery treats the subfolder name as the variant, so the converted gallery shows
+        // up per-device in "Selected Variant". The original files are never touched.
         private string ComputeOutputPath(string sourcePath, string variant)
         {
             if (string.IsNullOrWhiteSpace(sourcePath)) return null;
-            var baseName = Path.GetFileNameWithoutExtension(sourcePath).Split('.')[0];
+            var fileName = Path.GetFileName(sourcePath);   // keep the full "Name.pitch.funscript" so axis variants survive
             var v = SanitizeVariant(variant);
             if (string.IsNullOrEmpty(v)) v = "FM";
             var root = !string.IsNullOrWhiteSpace(_galleryPath) && Directory.Exists(_galleryPath)
                 ? _galleryPath
                 : (Path.GetDirectoryName(sourcePath) ?? "");
-            return Path.Combine(root, v, $"{baseName}.funscript");
+            return Path.Combine(root, v, fileName);
         }
 
+        // Derive the variant subfolder name from the profile name. Strips any text inside ()
+        // and the parens themselves, then drops disallowed filename chars. e.g.
+        //   "Hismith Pro 1 (1kg load)" → "HismithPro1"
+        //   "Generic device"           → "Genericdevice"
         private static string DeriveVariant(string profileName)
         {
-            var first = (profileName ?? "").Trim()
-                .Split(new[] { ' ', '-', '_', '(', '.' }, StringSplitOptions.RemoveEmptyEntries)
-                .FirstOrDefault();
-            var v = SanitizeVariant(first ?? "");
+            var name = (profileName ?? "").Trim();
+            name = System.Text.RegularExpressions.Regex.Replace(name, @"\s*\([^)]*\)\s*", " ").Trim();
+            var v = SanitizeVariant(name);
             return string.IsNullOrEmpty(v) ? "FM" : v;
         }
 
@@ -398,12 +445,15 @@ namespace Edi.Forms
 
         // ───────── convert ─────────
 
+        // Convert the whole selected gallery — every axis file (main + .pitch + .roll + …) becomes
+        // a power-level script under <gallery>/<variant>/. The user's "single funscript at a time"
+        // workflow is gone: a gallery in, a parallel gallery out.
         private void Convert_Click(object sender, RoutedEventArgs e)
         {
-            var sourcePath = SelectedSourcePath();
-            if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+            var gallery = SelectedSourceGallery();
+            if (gallery == null || gallery.Files.Count == 0)
             {
-                Status("Pick a source funscript first."); return;
+                Status("Pick a source gallery first."); return;
             }
             var prof = CurrentProfile();
             if (prof.MaxRPM <= prof.MinRPM)
@@ -413,50 +463,70 @@ namespace Edi.Forms
             var variant = SanitizeVariant(txtVariant.Text);
             if (string.IsNullOrEmpty(variant)) { Status("Enter an output subfolder name."); return; }
 
-            var outPath = ComputeOutputPath(sourcePath, variant);
-            if (string.Equals(Path.GetFullPath(outPath), Path.GetFullPath(sourcePath), StringComparison.OrdinalIgnoreCase))
+            // Guard against overwriting the source by aiming the variant folder at the gallery's
+            // own folder (would land NewName.funscript next to OldName.funscript, but if variant
+            // happened to equal an existing axis name it could still collide — refuse it).
+            foreach (var src in gallery.Files)
             {
-                Status("Output would overwrite the source — choose a different subfolder name."); return;
-            }
-
-            FunScriptFile src;
-            try { src = FunScriptFile.Read(sourcePath); }
-            catch (Exception ex) { Status("Failed to read source: " + ex.Message); return; }
-            if (src?.actions == null || src.actions.Count == 0) { Status("Source has no actions."); return; }
-
-            if (File.Exists(outPath))
-            {
-                var ans = MessageBox.Show(Window.GetWindow(this),
-                    $"'{Path.GetFileName(outPath)}' already exists in '{variant}'. Overwrite it?",
-                    "Overwrite variant?", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (ans != MessageBoxResult.Yes) { Status("Cancelled."); return; }
+                var would = ComputeOutputPath(src, variant);
+                if (string.Equals(Path.GetFullPath(would), Path.GetFullPath(src), StringComparison.OrdinalIgnoreCase))
+                {
+                    Status("Output would overwrite the source — choose a different subfolder name."); return;
+                }
             }
 
             var opts = ReadOptions();
-            List<FunScriptAction> converted;
-            try { converted = FmScriptConverter.Convert(src.actions, prof, opts); }
-            catch (Exception ex) { Status("Conversion error: " + ex.Message); return; }
-
-            if (converted.Count == 0) { Status("Conversion produced no actions — check the options."); return; }
-
-            var outFile = new FunScriptFile
+            var existing = gallery.Files.Select(f => ComputeOutputPath(f, variant)).Where(File.Exists).ToList();
+            if (existing.Count > 0)
             {
-                version = string.IsNullOrEmpty(src.version) ? "1.0" : src.version,
-                inverted = false,
-                range = src.range > 0 ? src.range : 100,
-                actions = converted,
-                metadata = src.metadata,
-            };
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(outPath));
-                outFile.Save(outPath);
+                var ans = MessageBox.Show(Window.GetWindow(this),
+                    $"{existing.Count} file(s) already exist in the '{variant}' folder. Overwrite the whole gallery?",
+                    "Overwrite variant gallery?", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (ans != MessageBoxResult.Yes) { Status("Cancelled."); return; }
             }
-            catch (Exception ex) { Status("Failed to save: " + ex.Message); return; }
+
+            int converted = 0, skipped = 0, totalActions = 0;
+            string firstError = null;
+            foreach (var srcPath in gallery.Files)
+            {
+                FunScriptFile src;
+                try { src = FunScriptFile.Read(srcPath); }
+                catch (Exception ex) { skipped++; firstError ??= $"{Path.GetFileName(srcPath)}: {ex.Message}"; continue; }
+                if (src?.actions == null || src.actions.Count == 0) { skipped++; continue; }
+
+                List<FunScriptAction> outActions;
+                try { outActions = FmScriptConverter.Convert(src.actions, prof, opts); }
+                catch (Exception ex) { skipped++; firstError ??= $"{Path.GetFileName(srcPath)}: {ex.Message}"; continue; }
+                if (outActions.Count == 0) { skipped++; continue; }
+
+                var outPath = ComputeOutputPath(srcPath, variant);
+                var outFile = new FunScriptFile
+                {
+                    version  = string.IsNullOrEmpty(src.version) ? "1.0" : src.version,
+                    inverted = false,
+                    range    = src.range > 0 ? src.range : 100,
+                    actions  = outActions,
+                    metadata = src.metadata,
+                };
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(outPath));
+                    outFile.Save(outPath);
+                    converted++;
+                    totalActions += outActions.Count;
+                }
+                catch (Exception ex) { skipped++; firstError ??= $"{Path.GetFileName(srcPath)}: {ex.Message}"; }
+            }
 
             SaveSettings();
-            Status($"Saved {converted.Count} power-level actions → '{variant}\\{Path.GetFileName(outPath)}'. " +
-                   $"Reloading… then pick the '{variant}' variant for your rotary machine in the Devices panel.");
+            if (converted == 0)
+            {
+                Status("Conversion produced no files." + (firstError != null ? " First error: " + firstError : ""));
+                return;
+            }
+            var tail = skipped > 0 ? $" ({skipped} file(s) skipped)" : "";
+            Status($"Saved {converted} file(s) / {totalActions} actions → '{variant}\\'{tail}. " +
+                   $"Reload, then pick the '{variant}' variant for your rotary machine in the Devices panel.");
             RefreshSourceInfo();
             ConversionSaved?.Invoke(this, EventArgs.Empty);
         }

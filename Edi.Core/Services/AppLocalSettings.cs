@@ -6,12 +6,34 @@ using System.Text.Json;
 namespace Edi.Core.Services
 {
     // A program shown on the top quick-launch bar (e.g. Intiface, a funscript player).
-    public class QuickProgram
+    public class QuickProgram : System.ComponentModel.INotifyPropertyChanged
     {
         public string Name { get; set; } = "";
         public string Path { get; set; } = "";
         public string Url { get; set; } = "";   // optional, shown next to the name like the API Docs URL
         public bool ShowUrl { get; set; } = true;   // whether the URL line is shown on the pill
+
+        // Runtime-only status flag (NOT persisted). null = not yet polled / no URL to poll;
+        // true = the URL/port responded; false = unreachable. Drives the small dot overlay in
+        // the pill so the user can see at a glance which services are actually up.
+        private bool? _isReachable;
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool? IsReachable
+        {
+            get => _isReachable;
+            set { if (_isReachable != value) { _isReachable = value; OnChanged(nameof(IsReachable)); OnChanged(nameof(HasStatusDot)); } }
+        }
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool HasStatusDot => IsReachable.HasValue;
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+        private void OnChanged(string n) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(n));
+
+        // True for entries that have no URL set — the URL options ("Edit URL", "Show URL") don't
+        // apply, so the context menu falls back to "Edit Folder Path…" (editing Path) instead.
+        // The Funscript Player is the canonical case: no link, just a folder/exe path the launcher
+        // opens. Name kept as IsFolderPath because that's how it reads on the menu trigger.
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool IsFolderPath => string.IsNullOrWhiteSpace(Url);
     }
 
     // A "support this mod" donation destination shown in the Support popup
@@ -60,6 +82,20 @@ namespace Edi.Core.Services
         public bool LauncherStackUrl { get; set; } = true;   // launcher pills: URL under name (vs beside)
         public List<string> TopBarChips { get; set; } = new();   // pinned connection chips: "Key","EStim","OSR"
         public List<string> TopBarOrder { get; set; } = new();   // drag-reorder order of top-bar pills (keys: "apidocs","prog:<name>","chip:Key"…)
+
+        // Right-click toggles for the connection / Swagger pills.
+        // ShowDeviceKey OFF (default) masks the Handy device key with •••• since it's a secret;
+        // user opts in via the chip's right-click → Show Key.
+        // ShowApiDocsUrl ON (default) shows "localhost:5000" under the Swagger label;
+        // user can hide it via the pill's right-click → Show URL toggle.
+        public bool ShowDeviceKey { get; set; }
+        public bool ShowApiDocsUrl { get; set; } = true;
+
+        // Hard kill-switch for any device-ready auto-launch path (legacy EdiConfig.json
+        // ExecuteOnReady, fallback to Selected Game's exe, etc.). Defaults to TRUE so games
+        // never start themselves — the user has to press LAUNCH GAME or use a shortcut.
+        // Toggle from Settings → Display → "Block auto-launch when device connects".
+        public bool BlockAutoLaunch { get; set; } = true;
 
         // ── Rotary fuck-machine script converter (Live Edit → FM converter) ──
         public List<global::Edi.Core.Funscript.Fm.FmDeviceProfile> FmProfiles { get; set; } = new();

@@ -23,12 +23,14 @@
             </ResourceDictionary.MergedDictionaries>
 
             <!-- Reusable styles for this dialog -->
+            <!-- Bottom padding bumped to 14 so the LAUNCH OPTIONS section's "+ Add launch option"
+                 button doesn't visually kiss the rounded corner / bottom border of the card. -->
             <Style x:Key="FieldCard" TargetType="Border">
                 <Setter Property="Background"      Value="{DynamicResource App.PanelBgHi}"/>
                 <Setter Property="BorderBrush"     Value="{DynamicResource App.Border}"/>
                 <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="CornerRadius"    Value="6"/>
-                <Setter Property="Padding"         Value="14,11"/>
+                <Setter Property="Padding"         Value="14,11,14,14"/>
             </Style>
 
             <!-- Distinct "identity" card (Game name + type) — elevated bg + accent outline -->
@@ -254,7 +256,12 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <Button Content="＋ Add launch option" Height="30" HorizontalAlignment="Left" Margin="0,2,0,0" Padding="12,0"
+                        <!-- Decoupled from the rest of the StackPanel with its own margins so the button
+                             stays clear of both the LAUNCH OPTIONS rows above and the rounded card edge
+                             below. Combined with the FieldCard's 14px bottom padding this gives ~22px of
+                             clearance to the panel border. -->
+                        <Button Content="＋ Add launch option" Height="30" HorizontalAlignment="Left" Margin="0,8,0,4" Padding="14,0"
+                                MinWidth="160"
                                 BorderBrush="#5A6273" BorderThickness="1" Click="AddLaunch_Click"/>
                     </StackPanel>
                 </Border>
@@ -321,7 +328,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- ============ COVER IMAGE (OPTIONAL) ============ -->
+                <!-- ============ BANNER (OPTIONAL) ============ -->
                 <Border Grid.Row="10" Style="{StaticResource FieldCard}">
                     <StackPanel>
                         <Grid>
@@ -331,9 +338,9 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" Orientation="Horizontal">
                                 <TextBlock Text="&#xE722;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{DynamicResource App.Accent}" VerticalAlignment="Center" Margin="0,0,10,0" TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
-                                <TextBlock Text="COVER IMAGE" Style="{StaticResource FieldTitle}" VerticalAlignment="Center"/>
+                                <TextBlock Text="BANNER" Style="{StaticResource FieldTitle}" VerticalAlignment="Center"/>
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="shown behind the game card in Move-game layout"
+                            <TextBlock Grid.Column="1" Text="shown behind the game card"
                                        Foreground="{DynamicResource App.TextMuted}"
                                        FontSize="11"
                                        VerticalAlignment="Bottom"
@@ -350,34 +357,34 @@
                             <Button  Grid.Column="2" Content="Browse…" Height="34" Width="92" BorderBrush="#5A6273" BorderThickness="1" Click="BrowseImage_Click"/>
                         </Grid>
 
-                        <!-- Cover preview — right-click for options (search / file / URL / crop / clear) -->
+                        <!-- Banner preview — right-click for options (search / file / URL / crop / clear) -->
                         <Border x:Name="coverPreview" Height="110" Margin="0,10,0,0" CornerRadius="4"
                                 Background="{DynamicResource App.InputBg}" BorderBrush="{DynamicResource App.Border}" BorderThickness="1"
                                 ClipToBounds="True" Cursor="Hand">
                             <Border.ContextMenu>
                                 <ContextMenu>
-                                    <MenuItem Header="Crop image…" Click="CropCover_Click">
+                                    <MenuItem Header="Crop banner…" Click="CropCover_Click">
                                         <MenuItem.Icon><TextBlock Text="&#xE123;" FontFamily="Segoe MDL2 Assets" FontSize="13"/></MenuItem.Icon>
                                     </MenuItem>
                                     <Separator/>
                                     <MenuItem Header="Search online…" Click="CoverSearch_Click">
                                         <MenuItem.Icon><TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="13"/></MenuItem.Icon>
                                     </MenuItem>
-                                    <MenuItem Header="Set from file…" Click="BrowseImage_Click">
+                                    <MenuItem Header="Set banner from file…" Click="BrowseImage_Click">
                                         <MenuItem.Icon><TextBlock Text="&#xEB9F;" FontFamily="Segoe MDL2 Assets" FontSize="13"/></MenuItem.Icon>
                                     </MenuItem>
-                                    <MenuItem Header="Set from URL…" Click="CoverUrl_Click">
+                                    <MenuItem Header="Set banner from URL…" Click="CoverUrl_Click">
                                         <MenuItem.Icon><TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" FontSize="13"/></MenuItem.Icon>
                                     </MenuItem>
                                     <Separator/>
-                                    <MenuItem Header="Clear image" Click="ClearCover_Click">
+                                    <MenuItem Header="Clear banner" Click="ClearCover_Click">
                                         <MenuItem.Icon><TextBlock Text="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
                                     </MenuItem>
                                 </ContextMenu>
                             </Border.ContextMenu>
                             <Grid>
                                 <Image x:Name="imgPreview" Stretch="UniformToFill"/>
-                                <TextBlock x:Name="lblNoCover" Text="No cover — right-click for options"
+                                <TextBlock x:Name="lblNoCover" Text="No banner — right-click for options"
                                            Foreground="{DynamicResource App.TextMuted}" FontSize="12"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 <!-- Visible quick actions (also available via right-click) -->

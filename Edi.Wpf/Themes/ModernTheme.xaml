@@ -346,6 +346,50 @@
     </Style>
 
     <!-- Accent button (used for primary actions like Play, Reconnect) -->
+    <!-- Cyan-filled twin of AccentButton — same shape/states, App.AccentAlt color, so two
+         filled buttons next to each other read as distinct actions instead of one button
+         that "doesn't look clickable". Hover/press shades are inlined since there's no
+         App.AccentAltDark resource. -->
+    <Style x:Key="AccentAltButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background"  Value="{StaticResource App.AccentAlt}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource App.AccentAlt}"/>
+        <Setter Property="Foreground"  Value="#001318"/>
+        <Setter Property="FontWeight"  Value="SemiBold"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="border"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Margin="{TemplateBinding Padding}"
+                                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="border" Property="Background" Value="#4DECFF"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="#4DECFF"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="border" Property="Background" Value="#00B5CC"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="#00B5CC"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="border" Property="Background"  Value="{StaticResource App.Disabled}"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource App.Border}"/>
+                            <Setter Property="Foreground" Value="{StaticResource App.DisabledText}"/>
+                            <Setter Property="Cursor" Value="Arrow"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Background"  Value="{StaticResource App.Accent}"/>
         <Setter Property="BorderBrush" Value="{StaticResource App.Accent}"/>
@@ -594,39 +638,45 @@
         <Setter Property="Margin"     Value="0,0,0,0"/>
     </Style>
 
-    <!-- ============ Toggle switch (CheckBox-based) ============ -->
+    <!-- ============ Toggle switch (CheckBox-based) ============ ▸
+         Rectangular "square" track with a small rounded thumb that slides edge-to-edge.
+         Label sits slightly higher (TextOptions.TextFormattingMode="Ideal") with a small
+         left margin so it doesn't crowd the track. -->
     <Style x:Key="ToggleSwitch" TargetType="CheckBox">
         <Setter Property="Foreground" Value="{StaticResource App.Text}"/>
         <Setter Property="FontFamily" Value="{StaticResource App.FontFamily}"/>
         <Setter Property="FontSize"   Value="{StaticResource App.FontSize}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
         <Setter Property="Cursor"     Value="Hand"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
                     <StackPanel Orientation="Horizontal" Background="Transparent">
                         <Border x:Name="track"
-                                Width="36" Height="20"
-                                CornerRadius="10"
+                                Width="38" Height="20"
+                                CornerRadius="3"
                                 Background="{StaticResource App.BorderStrong}"
                                 BorderBrush="{StaticResource App.Border}"
                                 BorderThickness="1"
-                                Margin="0,0,8,0"
+                                Margin="0,0,10,0"
                                 VerticalAlignment="Center"
                                 SnapsToDevicePixels="True">
                             <!-- Thumb stays vertically centered and slides between ends so it never
-                                 looks misaligned mid-toggle. -->
-                            <Ellipse x:Name="thumb"
-                                     Width="14" Height="14"
-                                     Fill="#FFFFFF"
-                                     HorizontalAlignment="Left"
-                                     VerticalAlignment="Center"
-                                     Margin="2,0,0,0"
-                                     RenderTransformOrigin="0.5,0.5">
-                                <Ellipse.RenderTransform>
+                                 looks misaligned mid-toggle. Rounded rectangle for the new square track. -->
+                            <Border x:Name="thumb"
+                                    Width="14" Height="14"
+                                    CornerRadius="2"
+                                    Background="#FFFFFF"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Margin="2,0,0,0"
+                                    RenderTransformOrigin="0.5,0.5">
+                                <Border.RenderTransform>
                                     <TranslateTransform x:Name="thumbShift" X="0"/>
-                                </Ellipse.RenderTransform>
-                            </Ellipse>
+                                </Border.RenderTransform>
+                            </Border>
                         </Border>
                         <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True"/>
                     </StackPanel>
@@ -638,7 +688,7 @@
                                 <BeginStoryboard>
                                     <Storyboard>
                                         <DoubleAnimation Storyboard.TargetName="thumbShift" Storyboard.TargetProperty="X"
-                                                         To="16" Duration="0:0:0.14"/>
+                                                         To="18" Duration="0:0:0.14"/>
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
@@ -657,7 +707,7 @@
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{StaticResource App.DisabledText}"/>
                             <Setter TargetName="track" Property="Background" Value="{StaticResource App.Disabled}"/>
-                            <Setter TargetName="thumb" Property="Fill" Value="#888888"/>
+                            <Setter TargetName="thumb" Property="Background" Value="#888888"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

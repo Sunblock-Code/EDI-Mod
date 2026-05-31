@@ -435,6 +435,14 @@
                             <TextBlock Text="Support" VerticalAlignment="Center" TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
                         </StackPanel>
                     </Button>
+                    <!-- Games shortcut: icon-only nav-bar button — opens the Games sub-popup (Games Location + Auto-add) -->
+                    <Button x:Name="btnSettingsGames" Click="SettingsGames_Click" Width="36" Height="32" Margin="8,0,0,0"
+                            BorderBrush="{DynamicResource App.Border}" BorderThickness="1"
+                            ToolTip="Games Location + Auto-add">
+                        <TextBlock Text="&#xE7FC;" FontFamily="Segoe MDL2 Assets" FontSize="15"
+                                   Foreground="{DynamicResource App.AccentAlt}"
+                                   TextOptions.TextRenderingMode="ClearType"/>
+                    </Button>
                     <Button x:Name="btnSettings" Click="SettingsButton_Click" Width="36" Height="32" Margin="8,0,0,0"
                             BorderBrush="{DynamicResource App.Border}" BorderThickness="1" ToolTip="Settings">
                         <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="16" TextOptions.TextRenderingMode="ClearType"
@@ -791,12 +799,31 @@
                      All pills are direct children so any can be dragged to any position (handled in code). -->
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" x:Name="topBar" AllowDrop="True"
                             PreviewMouseLeftButtonDown="TopBar_PreviewMouseDown" PreviewMouseMove="TopBar_PreviewMouseMove"
-                            DragOver="TopBar_DragOver" Drop="TopBar_Drop">
+                            DragOver="TopBar_DragOver" DragLeave="TopBar_DragLeave" Drop="TopBar_Drop">
 
-                <!-- Swagger / API docs link -->
+                <!-- Swagger / API docs link. Right-click → Show URL toggles the second line. -->
                 <Border x:Name="pillApiDocs" Tag="apidocs" Style="{StaticResource LauncherPill}" Padding="0" Margin="0,0,8,0"
-                        ToolTip="Open Swagger API docs in browser"
+                        ToolTip="Open Swagger API docs in browser (right-click for options)"
                         MouseLeftButtonUp="Label_MouseDoubleClick">
+                    <Border.ContextMenu>
+                        <ContextMenu>
+                            <!-- Header flips to "Hide URL" when the URL line is already visible, so
+                                 the action label always describes what clicking will DO. -->
+                            <MenuItem x:Name="miApiDocsShowUrl" IsCheckable="True" Click="ApiDocsShowUrl_Click">
+                                <MenuItem.Style>
+                                    <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                        <Setter Property="Header" Value="Show URL"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter Property="Header" Value="Hide URL"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </MenuItem.Style>
+                                <MenuItem.Icon><TextBlock Text="&#xE7B3;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
+                            </MenuItem>
+                        </ContextMenu>
+                    </Border.ContextMenu>
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <Border Grid.Column="0" Width="42" CornerRadius="7,0,0,7" Background="#0E1015">
@@ -805,10 +832,10 @@
                         </Border>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="11,7,14,7"
                                     Orientation="{Binding LauncherUrlOrientation, RelativeSource={RelativeSource AncestorType=Window}}">
-                            <TextBlock Text="API Docs" VerticalAlignment="Center" Margin="0,0,6,0"
+                            <TextBlock Text="Swagger" VerticalAlignment="Center" Margin="0,0,6,0"
                                        Foreground="{DynamicResource App.AccentAlt}" FontWeight="SemiBold" FontSize="13"
                                        TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
-                            <TextBlock Text="localhost:5000" VerticalAlignment="Center"
+                            <TextBlock x:Name="lblApiDocsUrl" Text="localhost:5000" VerticalAlignment="Center"
                                        Foreground="{DynamicResource App.Text}" FontSize="12"
                                        TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
                         </StackPanel>
@@ -825,12 +852,41 @@
                                     ToolTip="{Binding Path}">
                                 <Border.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="Edit URL…" Click="EditProgramUrl_Click">
+                                        <!-- BasedOn the global MenuItem style so this inherits the themed
+                                             template + hover color (App.AccentSoft). Without it, WPF falls
+                                             back to the system default and the highlight reads as blue. -->
+                                        <MenuItem Click="EditProgramUrl_Click">
+                                            <MenuItem.Style>
+                                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                                    <Setter Property="Header" Value="Edit URL…"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsFolderPath}" Value="True">
+                                                            <Setter Property="Header" Value="Edit Folder Path…"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </MenuItem.Style>
                                             <MenuItem.Icon>
                                                 <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
                                             </MenuItem.Icon>
                                         </MenuItem>
-                                        <MenuItem Header="Show URL" IsCheckable="True" IsChecked="{Binding ShowUrl, Mode=OneWay}" Click="ToggleProgramUrl_Click">
+                                        <MenuItem IsCheckable="True" IsChecked="{Binding ShowUrl, Mode=OneWay}" Click="ToggleProgramUrl_Click">
+                                            <MenuItem.Style>
+                                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                                    <!-- Header flips to "Hide URL" when ShowUrl is already true. Trigger
+                                                         on IsChecked (which mirrors ShowUrl OneWay) handles that. The
+                                                         folder-path program (Funscript Player) still hides the row entirely. -->
+                                                    <Setter Property="Header" Value="Show URL"/>
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsChecked" Value="True">
+                                                            <Setter Property="Header" Value="Hide URL"/>
+                                                        </Trigger>
+                                                        <DataTrigger Binding="{Binding IsFolderPath}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </MenuItem.Style>
                                             <MenuItem.Icon><TextBlock Text="&#xE7B3;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
                                         </MenuItem>
                                         <Separator Style="{StaticResource MenuSeparator}"/>
@@ -851,7 +907,11 @@
                                                     <Setter Property="Visibility" Value="Visible"/>
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding Name}" Value="Funscript Player"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                        <DataTrigger Binding="{Binding Name}" Value="MultiFunPlayer"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
                                                         <DataTrigger Binding="{Binding Name}" Value="Intiface"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                        <DataTrigger Binding="{Binding Name}" Value="Stash"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                        <DataTrigger Binding="{Binding Name}" Value="OpenFunscripter"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+                                                        <DataTrigger Binding="{Binding Name}" Value="Glyph"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </Border.Style>
@@ -860,8 +920,11 @@
                                                             Stretch="UniformToFill"/>
                                             </Border.Background>
                                         </Border>
-                                        <!-- Funscript Player: a stroke-waveform tile that echoes the live preview line -->
-                                        <Border x:Name="fpIcon" CornerRadius="7,0,0,7" Background="#0E1015">
+                                        <!-- Funscript Player: stroke-waveform tile that echoes the live preview line.
+                                             Tighter margin + Stretch=Uniform + an explicit centered alignment keep
+                                             the full wave inside the rounded 42px tile (previously the right peak
+                                             clipped against the icon/text seam). MultiFunPlayer gets its own tile. -->
+                                        <Border x:Name="fpIcon" CornerRadius="7,0,0,7" Background="#0E1015" ClipToBounds="True">
                                             <Border.Style>
                                                 <Style TargetType="Border">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -870,9 +933,87 @@
                                                     </Style.Triggers>
                                                 </Style>
                                             </Border.Style>
-                                            <Viewbox Margin="9">
-                                                <Path StrokeThickness="2.4" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                                      Data="M0,9 L4,2 L8,14 L12,4 L16,13 L20,8">
+                                            <!-- Path.Stretch=Uniform with explicit Width/Height makes WPF account for
+                                                 the rounded stroke caps when fitting the geometry — Viewbox was
+                                                 measuring only the raw data bbox, which let the right cap clip.
+                                                 30x18 inside the 42-wide tile (with Margin=6 + 6) leaves clear
+                                                 buffers on every side. -->
+                                            <Path Width="30" Height="18" Stretch="Uniform"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  StrokeThickness="2.4" StrokeLineJoin="Round"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  Data="M0,9 L4,2 L8,14 L12,4 L16,13 L20,8">
+                                                <Path.Stroke>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                        <GradientStop Color="#FF74B7" Offset="0"/>
+                                                        <GradientStop Color="#FF2D8C" Offset="1"/>
+                                                    </LinearGradientBrush>
+                                                </Path.Stroke>
+                                            </Path>
+                                        </Border>
+                                        <!-- MultiFunPlayer: four cyan equalizer bars on the dark tile. Distinct
+                                             from Funscript Player's single pink wave so users can tell the two
+                                             apart at a glance when both pills are pinned. -->
+                                        <Border x:Name="mfpIcon" CornerRadius="7,0,0,7" Background="#0E1015" ClipToBounds="True">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Name}" Value="MultiFunPlayer"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <!-- Path.Stretch=Uniform with explicit Width/Height keeps the 4 bars
+                                                 inside the 42px tile after accounting for rounded stroke caps.
+                                                 Pink gradient matches Funscript Player + Intiface so all three
+                                                 pill icons read as a coherent set. -->
+                                            <Path Width="28" Height="22" Stretch="Uniform"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  Data="M3,18 L3,4  M8,18 L8,9  M13,18 L13,2  M18,18 L18,11">
+                                                <Path.Stroke>
+                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                        <GradientStop Color="#FF74B7" Offset="0"/>
+                                                        <GradientStop Color="#FF2D8C" Offset="1"/>
+                                                    </LinearGradientBrush>
+                                                </Path.Stroke>
+                                            </Path>
+                                        </Border>
+                                        <!-- Glyph: dark tile + pink hub-and-spokes (Globe/Network) glyph. Clicking
+                                             the pill launches Glyph Server (if not already running) then Glyph Client. -->
+                                        <Border x:Name="glyphIcon" CornerRadius="7,0,0,7" Background="#0E1015">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Name}" Value="Glyph"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="&#xE968;" FontFamily="Segoe MDL2 Assets" FontSize="22"
+                                                       Foreground="{DynamicResource PillIcon}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                        </Border>
+                                        <!-- OpenFunscripter (OFS): dark tile + pink pencil-on-wave combo glyph.
+                                             Edit pencil (E70F) atop a thin wave so it reads as "funscript editor"
+                                             at a glance, distinct from the player tiles. -->
+                                        <Border x:Name="ofsIcon" CornerRadius="7,0,0,7" Background="#0E1015" ClipToBounds="True">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Name}" Value="OpenFunscripter"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <Grid>
+                                                <!-- Thin wave behind the pencil. -->
+                                                <Path Width="32" Height="14" Stretch="Uniform"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                                      Margin="0,0,0,3" Opacity="0.55"
+                                                      StrokeThickness="1.6" StrokeLineJoin="Round"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Data="M0,5 L4,1 L8,8 L12,2 L16,7 L20,4">
                                                     <Path.Stroke>
                                                         <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                                             <GradientStop Color="#FF74B7" Offset="0"/>
@@ -880,7 +1021,28 @@
                                                         </LinearGradientBrush>
                                                     </Path.Stroke>
                                                 </Path>
-                                            </Viewbox>
+                                                <!-- Edit pencil glyph on top. -->
+                                                <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="18"
+                                                           Foreground="{DynamicResource PillIcon}" HorizontalAlignment="Center" VerticalAlignment="Top"
+                                                           Margin="0,3,0,0"
+                                                           TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                            </Grid>
+                                        </Border>
+                                        <!-- Stash: dark tile + pink cardboard-box glyph (Segoe MDL2 E7B8 Package).
+                                             URL-only pill that opens http://localhost:9999/ (Stash's default address)
+                                             in the browser. -->
+                                        <Border x:Name="stashIcon" CornerRadius="7,0,0,7" Background="#0E1015">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Name}" Value="Stash"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="&#xE7B8;" FontFamily="Segoe MDL2 Assets" FontSize="22"
+                                                       Foreground="{DynamicResource PillIcon}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
                                         </Border>
                                         <!-- Intiface: dark tile + pink Bluetooth glyph -->
                                         <Border x:Name="intifaceIcon" CornerRadius="7,0,0,7" Background="#0E1015">
@@ -920,6 +1082,32 @@
                                             </TextBlock.Style>
                                         </TextBlock>
                                     </StackPanel>
+                                    <!-- Subtle status dot in the top-right of the pill. Shown only when
+                                         IsReachable has a value (HasStatusDot). Green when reachable, soft
+                                         grey when not — drives off the periodic poll in MainWindow. -->
+                                    <Ellipse Grid.ColumnSpan="2" Width="7" Height="7"
+                                             HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,5,5,0"
+                                             SnapsToDevicePixels="True">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Setter Property="Fill" Value="#52606E"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasStatusDot}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsReachable}" Value="True">
+                                                        <Setter Property="Fill" Value="#3DDC97"/>
+                                                        <Setter Property="Effect">
+                                                            <Setter.Value>
+                                                                <DropShadowEffect Color="#3DDC97" BlurRadius="6" ShadowDepth="0" Opacity="0.7"/>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
                                 </Grid>
                             </Border>
                         </DataTemplate>
@@ -933,6 +1121,22 @@
                         <ContextMenu>
                             <MenuItem Header="Edit Device Key…" Click="ChipKeyEdit_Click">
                                 <MenuItem.Icon><TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
+                            </MenuItem>
+                            <!-- Header flips to "Hide Key" while the value is visible. When OFF
+                                 the value TextBlock is fully Collapsed — not just masked. -->
+                            <MenuItem x:Name="miChipKeyShow" IsCheckable="True" Click="ChipKeyShow_Click"
+                                      ToolTip="Reveal the real device key on the pill. Off by default; the value is fully hidden until you flip this on.">
+                                <MenuItem.Style>
+                                    <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                        <Setter Property="Header" Value="Show Key"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter Property="Header" Value="Hide Key"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </MenuItem.Style>
+                                <MenuItem.Icon><TextBlock Text="&#xE7B3;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
                             </MenuItem>
                             <Separator Style="{StaticResource MenuSeparator}"/>
                             <MenuItem Header="Remove" Click="ChipRemove_Click" Tag="Key">
@@ -990,28 +1194,46 @@
                     </Grid>
                 </Border>
 
-                <!-- Add menu: program or a connection chip (Key / EStim / OSR) -->
+                <!-- Add menu: program or a connection chip (Key / EStim / OSR). Items for chips
+                     already pinned, or programs already in QuickPrograms, are hidden in the
+                     Opened handler so the menu never offers a duplicate. -->
                 <Button x:Name="btnAddTop" Width="32" Height="32" Click="AddTop_Click" ToolTip="Add to the top bar"
                         BorderBrush="{DynamicResource App.Border}" BorderThickness="1">
                     <Button.ContextMenu>
-                        <ContextMenu x:Name="addTopMenu">
+                        <ContextMenu x:Name="addTopMenu" Opened="AddTopMenu_Opened">
                             <MenuItem Header="Add program…" Click="AddProgram_Click">
                                 <MenuItem.Icon><TextBlock Text="&#xE7AC;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
                             </MenuItem>
-                            <MenuItem Header="Intiface" Click="AddIntiface_Click">
+                            <MenuItem x:Name="miAddIntiface" Header="Intiface" Click="AddIntiface_Click">
                                 <MenuItem.Icon><TextBlock Text="&#xE968;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
                             </MenuItem>
-                            <MenuItem Header="Funscript Player" Click="AddFunscriptPlayer_Click">
+                            <MenuItem x:Name="miAddFunscriptPlayer" Header="Funscript Player" Click="AddFunscriptPlayer_Click">
                                 <MenuItem.Icon><TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
                             </MenuItem>
-                            <Separator Style="{StaticResource MenuSeparator}"/>
-                            <MenuItem Header="Add Device Key" Click="AddChip_Click" Tag="Key">
+                            <MenuItem x:Name="miAddMultiFunPlayer" Header="MultiFunPlayer" Click="AddMultiFunPlayer_Click"
+                                      ToolTip="Auto-detect MultiFunPlayer or browse to it. Pinned with its own cyan equalizer-bars icon to distinguish it from Funscript Player.">
+                                <MenuItem.Icon><TextBlock Text="&#xE9E9;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem x:Name="miAddStash" Header="Stash" Click="AddStash_Click"
+                                      ToolTip="Pin a Stash pill that opens http://localhost:9999/ in the browser (Stash's default address).">
+                                <MenuItem.Icon><TextBlock Text="&#xE7B8;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem x:Name="miAddOfs" Header="OpenFunscripter" Click="AddOfs_Click"
+                                      ToolTip="Auto-detect OpenFunscripter (OFS) or browse to it. The desktop scripting editor for funscripts.">
+                                <MenuItem.Icon><TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem x:Name="miAddGlyph" Header="Glyph" Click="AddGlyph_Click"
+                                      ToolTip="Pin a Glyph pill that launches Glyph Server (if it's not already running) and then Glyph Client.">
+                                <MenuItem.Icon><TextBlock Text="&#xE968;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
+                            </MenuItem>
+                            <Separator x:Name="miAddProgramsSeparator" Style="{StaticResource MenuSeparator}"/>
+                            <MenuItem x:Name="miAddChipKey" Header="Add Device Key" Click="AddChip_Click" Tag="Key">
                                 <MenuItem.Icon><TextBlock Text="&#xE192;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
                             </MenuItem>
-                            <MenuItem Header="Add EStim Audio" Click="AddChip_Click" Tag="EStim">
+                            <MenuItem x:Name="miAddChipEStim" Header="Add EStim Audio" Click="AddChip_Click" Tag="EStim">
                                 <MenuItem.Icon><TextBlock Text="&#xE767;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
                             </MenuItem>
-                            <MenuItem Header="Add OSR Port" Click="AddChip_Click" Tag="OSR">
+                            <MenuItem x:Name="miAddChipOSR" Header="Add OSR Port" Click="AddChip_Click" Tag="OSR">
                                 <MenuItem.Icon><TextBlock Text="&#xE839;" FontFamily="Segoe MDL2 Assets" FontSize="12"/></MenuItem.Icon>
                             </MenuItem>
                         </ContextMenu>
@@ -1259,9 +1481,8 @@
 
                         <StackPanel Grid.Row="6">
                             <Label Content="GAMES" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
-                            <!-- Divider above the search bar — sharp/bright (App.BorderStrong) to match the Devices section -->
-                            <Border Height="1" Background="{DynamicResource App.BorderStrong}" Margin="0,8,0,8"/>
-                            <!-- Optional search bar — sits UNDER the divider (toggled from the eye ▸ Game cards popup) -->
+                            <!-- (divider removed — cleaner separation between the LAUNCH button and the card list) -->
+                            <!-- Optional search bar — toggled from the eye ▸ Game cards popup -->
                             <Grid x:Name="searchRow" Visibility="Collapsed" Margin="0,0,0,6">
                                 <TextBox x:Name="txtGameSearch" Height="30" VerticalContentAlignment="Center"
                                          Padding="30,2,8,2" TextChanged="GameSearch_TextChanged"/>
@@ -1290,6 +1511,9 @@
                                  AllowDrop="True"
                                  PreviewMouseLeftButtonDown="lstGames_PreviewMouseLeftButtonDown"
                                  PreviewMouseMove="lstGames_PreviewMouseMove"
+                                 DragEnter="lstGames_DragEnter"
+                                 DragOver="lstGames_DragOver"
+                                 DragLeave="lstGames_DragLeave"
                                  Drop="lstGames_Drop">
                             <ListBox.Resources>
                                 <Style TargetType="ScrollBar">
@@ -1429,37 +1653,157 @@
                                                     </MenuItem.Icon>
                                                 </MenuItem>
                                                 <Separator Style="{StaticResource MenuSeparator}"/>
-                                                <MenuItem Header="Image">
+                                                <MenuItem Header="Banner">
                                                     <MenuItem.Icon>
                                                         <TextBlock Text="&#xEB9F;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
                                                     </MenuItem.Icon>
-                                                    <MenuItem Header="Crop image…" Click="CardCropImage_Click">
+                                                    <!-- Browse: thumbnail picker over every cached banner for this game, with
+                                                         "Fetch more" to pull additional variants without overwriting. -->
+                                                    <MenuItem Header="Browse banners…" Click="CardBrowseCovers_Click"
+                                                              ToolTip="Browse every banner already downloaded for this game; click 'Fetch more' to add more without re-overwriting old ones.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE7B3;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <MenuItem Header="Crop banner…" Click="CardCropImage_Click">
                                                         <MenuItem.Icon>
                                                             <TextBlock Text="&#xE123;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
                                                         </MenuItem.Icon>
                                                     </MenuItem>
                                                     <Separator Style="{StaticResource MenuSeparator}"/>
-                                                    <MenuItem Header="Set image from file…" Click="CardSetImageFile_Click">
+                                                    <MenuItem Header="Set banner from file…" Click="CardSetImageFile_Click">
                                                         <MenuItem.Icon>
                                                             <TextBlock Text="&#xEB9F;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
                                                         </MenuItem.Icon>
                                                     </MenuItem>
-                                                    <MenuItem Header="Set image from URL…" Click="CardSetImageUrl_Click">
+                                                    <MenuItem Header="Set banner from URL…" Click="CardSetImageUrl_Click">
                                                         <MenuItem.Icon>
                                                             <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
                                                         </MenuItem.Icon>
                                                     </MenuItem>
-                                                    <MenuItem Header="Fetch cover (DLsite / F95)" Click="CardFetchCover_Click">
+                                                    <!-- Auto = first match wins (silent). Mirrors icon's "Fetch icon (auto)". -->
+                                                    <MenuItem Header="Auto-fetch banner (first match)" Click="CardAutoFetchBanner_Click"
+                                                              ToolTip="Search DLsite → F95 → itch.io → SteamGridDB and apply the first result. No picker dialog.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE945;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <!-- Video preview clip — scrapes DLsite + itch.io product pages for <video>
+                                                         sources and downloads the first match as the card's banner (the existing
+                                                         hover/select player picks up .mp4 ImagePaths automatically). -->
+                                                    <MenuItem Header="Fetch video clip (DLsite / itch.io)" Click="CardFetchVideo_Click"
+                                                              ToolTip="Look up a trailer/preview .mp4 on DLsite then itch.io. Downloads and assigns the first match as the card's animated banner.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <MenuItem Header="Fetch video clip (pick from results…)" Click="CardFetchVideoPick_Click"
+                                                              ToolTip="Open a thumbnail picker over every preview clip DLsite / itch.io has for this game; double-click to use it as the card's animated banner.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE786;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <MenuItem Header="Fetch banner (pick from results…)" Click="CardFetchCover_Click"
+                                                              ToolTip="Open the search dialog so you can pick the right banner from the results yourself.">
                                                         <MenuItem.Icon>
                                                             <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
                                                         </MenuItem.Icon>
                                                     </MenuItem>
                                                     <Separator Style="{StaticResource MenuSeparator}"/>
-                                                    <MenuItem Header="Clear image" Click="CardClearImage_Click">
+                                                    <MenuItem Header="Clear banner" Click="CardClearImage_Click">
                                                         <MenuItem.Icon>
                                                             <TextBlock Text="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
                                                         </MenuItem.Icon>
                                                     </MenuItem>
+                                                </MenuItem>
+                                                <!-- Divider separating cover/banner actions (above) from icon actions (below). -->
+                                                <Separator Style="{StaticResource MenuSeparator}"/>
+                                                <MenuItem Header="Icon">
+                                                    <MenuItem.Icon>
+                                                        <TextBlock Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                    </MenuItem.Icon>
+                                                    <!-- Visual picker over every available source: folder icon, .ico,
+                                                         exe icon, and everything cached under <OutputDir>\icons\<game>\. -->
+                                                    <MenuItem Header="Browse icons…" Click="CardBrowseIcons_Click"
+                                                              ToolTip="Pick from a thumbnail grid showing folder icon, .ico in folder, exe icon, and every SteamGridDB icon you've fetched so far.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE7B3;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <!-- Sits right under Browse so users can preview the icon in the
+                                                         picker then immediately crop it to a square. -->
+                                                    <MenuItem Header="Crop icon…" Click="CardCropIcon_Click"
+                                                              ToolTip="Crop the current icon to a square. Useful after picking a wide banner-style result.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE123;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <Separator Style="{StaticResource MenuSeparator}"/>
+                                                    <!-- Quick-swap actions — each pins the icon to one specific source
+                                                         (cached into <OutputDir>\icons\<game>\ on first use). -->
+                                                    <MenuItem Header="Use folder icon" Click="CardUseFolderIcon_Click"
+                                                              ToolTip="Pin this card's icon to the Windows folder icon (Properties → Customize → Change Icon).">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <MenuItem Header="Use .ico in folder" Click="CardUseIcoInFolder_Click"
+                                                              ToolTip="Pin this card's icon to the first .ico file sitting in the game folder.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE7C3;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <MenuItem Header="Use exe icon" Click="CardUseExeIcon_Click"
+                                                              ToolTip="Pin this card's icon to the icon embedded in the game's .exe.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE756;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <Separator Style="{StaticResource MenuSeparator}"/>
+                                                    <MenuItem Header="Set icon from file…" Click="CardSetIconFile_Click"
+                                                              ToolTip="Use a local .ico / .png / .jpg file as this game's icon (overrides the folder/exe chain).">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xEB9F;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <MenuItem Header="Set icon from URL…" Click="CardSetIconUrl_Click"
+                                                              ToolTip="Paste an image URL — it's downloaded next to your save data and used as this game's icon.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <!-- Multi-source icon search: SteamGridDB /icons first (real icons),
+                                                         then falls back to the same DLsite → F95 → itch.io → SteamGridDB
+                                                         grids chain banners use — cover art still works as an icon. -->
+                                                    <MenuItem Header="Fetch icon (auto · all sources)" Click="CardFetchIcon_Click"
+                                                              ToolTip="Searches SteamGridDB icons first, then DLsite / F95 / itch.io / SteamGridDB grids if no icon match. Picks the first hit silently — use the picker below if you want to choose.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE945;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <!-- Picker variant — opens the cover-search dialog so the user can pick
+                                                         from F95 / DLsite / itch.io / SteamGridDB matches. Whatever's picked
+                                                         lands in the icon cache and becomes IconPath. -->
+                                                    <MenuItem Header="Fetch icon (pick from F95 / DLsite / itch.io…)" Click="CardFetchIconPick_Click"
+                                                              ToolTip="Open the search dialog so you can choose the right image from F95 / DLsite / itch.io / SteamGridDB results — used as this game's icon.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <Separator Style="{StaticResource MenuSeparator}"/>
+                                                    <MenuItem Header="Clear custom icon (use auto chain)" Click="CardClearIcon_Click"
+                                                              ToolTip="Drop the custom icon so the resolver falls back to the folder icon / .ico / exe icon chain.">
+                                                        <MenuItem.Icon>
+                                                            <TextBlock Text="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="12"/>
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                </MenuItem>
+                                                <Separator Style="{StaticResource MenuSeparator}"/>
+                                                <MenuItem Header="Create shortcut…" Click="CardCreateShortcut_Click"
+                                                          ToolTip="Generate a desktop .lnk that launches this game (with optional helper programs) and uses its icon.">
+                                                    <MenuItem.Icon>
+                                                        <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" FontSize="13"/>
+                                                    </MenuItem.Icon>
                                                 </MenuItem>
                                                 <Separator Style="{StaticResource MenuSeparator}"/>
                                                 <MenuItem Header="Remove game" Click="CardRemoveGame_Click">
@@ -1559,9 +1903,10 @@
                 <Border Grid.Row="4" x:Name="LiveEditCard" Style="{StaticResource Card}">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>   <!-- 0 Intensity -->
+                            <RowDefinition Height="Auto"/>   <!-- 1 Vibration -->
+                            <RowDefinition Height="Auto"/>   <!-- 2 Minimum (output floor) -->
+                            <RowDefinition Height="Auto"/>   <!-- 3 Action row: Pause + Reset -->
                         </Grid.RowDefinitions>
                         <!-- Intensity: stroke amplitude. Past 100% overdrives (saturates high). -->
                         <Grid Grid.Row="0">
@@ -1613,22 +1958,93 @@
                                        FontWeight="SemiBold" Foreground="{DynamicResource App.Text}"
                                        Text="{Binding Value, ElementName=sliderVibration, StringFormat={}{0:0}%}"/>
                         </Grid>
-                        <!-- Rotary fuck-machine converter: turn a stroke script into a power-level variant -->
-                        <Button Grid.Row="2" x:Name="btnFmConverter" Click="FmConverter_Click" Margin="0,10,0,0"
-                                Height="32" HorizontalAlignment="Stretch"
-                                BorderBrush="{DynamicResource App.Border}" BorderThickness="1"
-                                ToolTip="Convert a stroke funscript into a rotary fuck-machine power-level variant (saves a new variant; original untouched)">
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <TextBlock Text="&#x27F3;" FontSize="15" Margin="0,0,8,0" VerticalAlignment="Center"
-                                           Foreground="{DynamicResource App.Accent}"/>
-                                <TextBlock Text="Fuck Machine converter" VerticalAlignment="Center"/>
+                        <!-- Minimum: output floor. Useful when you want a constant baseline movement
+                             so the device never fully stops between strokes. Defaults to 0%. -->
+                        <Grid Grid.Row="2" Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="112"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                                <TextBlock Text="&#xE74F;" FontFamily="Segoe MDL2 Assets" FontSize="15" VerticalAlignment="Center" Margin="0,0,7,0"
+                                           Foreground="#FFB088"
+                                           TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                <TextBlock Text="MINIMUM" VerticalAlignment="Center"
+                                           Foreground="#FFB088" FontWeight="Bold" FontSize="13"/>
                             </StackPanel>
-                        </Button>
+                            <Slider Grid.Column="1" x:Name="sliderMinimum" Style="{StaticResource IntensitySlider}"
+                                    Value="0" Minimum="0" Maximum="100" VerticalAlignment="Center" ValueChanged="Slider_ValueChanged"
+                                    ToolTip="Output floor — raises the lower bound so the device never fully stops between strokes. 0% = no floor (normal behavior).">
+                                <Slider.Foreground>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#FF8855" Offset="0"/>
+                                        <GradientStop Color="#FFB088" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Slider.Foreground>
+                            </Slider>
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="40" TextAlignment="Right"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource App.Text}"
+                                       Text="{Binding Value, ElementName=sliderMinimum, StringFormat={}{0:0}%}"/>
+                        </Grid>
+                        <!-- Action row: Pause output (freezes device output without stopping playback) +
+                             Reset (snaps all sliders to defaults: Intensity=100, Vibration=0, Minimum=0). -->
+                        <Grid Grid.Row="3" Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ToggleButton Grid.Column="0" x:Name="btnPauseOutput" Height="30" HorizontalAlignment="Stretch"
+                                          Click="PauseOutput_Click" Cursor="Hand"
+                                          ToolTip="Freeze every connected device's output at zero without stopping playback. The script keeps running on the timeline.">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="bd" Background="{DynamicResource App.PanelBg}" BorderBrush="{DynamicResource App.Border}"
+                                                BorderThickness="1" CornerRadius="4" Padding="10,0">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <TextBlock x:Name="ico" Text="&#xE769;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                                           Foreground="{DynamicResource App.Text}" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                           TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                                <TextBlock x:Name="txt" Text="Pause output" Foreground="{DynamicResource App.Text}"
+                                                           VerticalAlignment="Center" FontWeight="SemiBold"
+                                                           TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource App.Accent}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="bd" Property="Background"  Value="{DynamicResource App.Accent}"/>
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource App.Accent}"/>
+                                                <Setter TargetName="ico" Property="Text" Value="&#xE768;"/>
+                                                <Setter TargetName="ico" Property="Foreground" Value="#FFFFFF"/>
+                                                <Setter TargetName="txt" Property="Text" Value="Resume output"/>
+                                                <Setter TargetName="txt" Property="Foreground" Value="#FFFFFF"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Button Grid.Column="1" x:Name="btnResetLiveEdit" Height="30" Width="78" Margin="6,0,0,0"
+                                    Click="ResetLiveEdit_Click"
+                                    BorderBrush="{DynamicResource App.Border}" BorderThickness="1"
+                                    ToolTip="Reset every Live Edit slider to its default (Intensity 100, Vibration 0, Minimum 0).">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <TextBlock Text="&#xE777;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                               Foreground="{DynamicResource App.TextMuted}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Reset" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
                     </Grid>
                 </Border>
 
-                <!-- ===== Playback card (live preview + transport + modify — own dock window) ===== -->
-                <Border Grid.Row="4" x:Name="PlaybackCard" Style="{StaticResource Card}">
+                <!-- ===== Playback card (live preview + transport + modify — own dock window) =====
+                     Square pink outline matches the rest of the app's accent and the "Waiting for playback" pill. -->
+                <Border Grid.Row="4" x:Name="PlaybackCard" Style="{StaticResource Card}"
+                        BorderBrush="{DynamicResource App.Accent}" BorderThickness="1.5"
+                        CornerRadius="0">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
@@ -1724,20 +2140,45 @@
                                 <Button Style="{StaticResource TransportButton}" ToolTip="Resume"         x:Name="btnResume"    Click="btnResume_Click">
                                     <TextBlock Text="►❚❚" FontSize="15"/>
                                 </Button>
-                                <Button Style="{StaticResource TransportButton}" ToolTip="Action Preview" x:Name="btnSimulator" Click="btnSimulator_Click">
-                                    <TextBlock Text="👁" FontSize="16"/>
-                                </Button>
+                                <!-- (Action Preview eye button removed. Preview Player is its own dockable
+                                     pane — toggle it from Settings → Panels → Preview Player.) -->
                             </StackPanel>
                         </Grid>
 
-                        <!-- Modify Scripts (opens the Funscript editor) -->
+                        <!-- Modify Scripts (opens the Funscript editor). Subtle outlined treatment
+                             — dark panel background, soft blue border, muted-blue text — so it sits
+                             quietly under the transport row instead of dominating the Playback card. -->
                         <Button Grid.Row="4" x:Name="btnFunscriptEditor" Click="btnFunscriptEditor_Click"
-                                Style="{StaticResource BlueButton}" Height="36" HorizontalAlignment="Stretch"
+                                Height="30" HorizontalAlignment="Stretch"
                                 ToolTip="Edit / modify the gallery's funscripts">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="15" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Modify Scripts" VerticalAlignment="Center"/>
-                            </StackPanel>
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="bd" CornerRadius="4"
+                                            Background="{DynamicResource App.PanelBg}"
+                                            BorderBrush="#3F5A8A" BorderThickness="1"
+                                            SnapsToDevicePixels="True">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock x:Name="ico" Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                       Foreground="#79A6FF" Margin="0,0,7,0" VerticalAlignment="Center"
+                                                       TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                            <TextBlock x:Name="txt" Text="Modify Scripts" Foreground="#79A6FF"
+                                                       FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"
+                                                       TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bd"  Property="Background"  Value="#1A2233"/>
+                                            <Setter TargetName="bd"  Property="BorderBrush" Value="#5C82C0"/>
+                                            <Setter TargetName="txt" Property="Foreground"  Value="#A5C3FF"/>
+                                            <Setter TargetName="ico" Property="Foreground"  Value="#A5C3FF"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="#152035"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
                         </Button>
                     </Grid>
                 </Border>
@@ -1848,6 +2289,38 @@
 
                 <!-- ===== Fuck Machine converter (hosted in a dockable optional panel) ===== -->
                 <local:FmConverterControl Grid.Row="4" x:Name="FmConverterCard" Visibility="Collapsed"/>
+
+                <!-- Preview Player: docked replacement for the old floating SimulateGame window.
+                     Vertical bar bound to the active PreviewDevice's position so users can see live
+                     stroke output without a physical device. DataContext is set in code when the
+                     panel is toggled on. -->
+                <Border Grid.Row="4" x:Name="PreviewPlayerCard" Style="{StaticResource Card}" Visibility="Collapsed">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="DEVICE POSITION"
+                                   Foreground="{DynamicResource App.TextMuted}" FontSize="10" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" Margin="0,4,0,2"/>
+                        <ProgressBar Grid.Row="1"
+                                     HorizontalAlignment="Center"
+                                     VerticalAlignment="Stretch"
+                                     Width="64" MinHeight="160"
+                                     Margin="0,8,0,8"
+                                     Orientation="Vertical"
+                                     Value="{Binding ProgressValue, FallbackValue=0}"
+                                     Foreground="{DynamicResource App.Accent}"
+                                     Background="{DynamicResource App.PanelBg}"
+                                     BorderBrush="{DynamicResource App.Border}"
+                                     BorderThickness="1"/>
+                        <TextBlock Grid.Row="2" TextWrapping="Wrap" TextAlignment="Center"
+                                   FontSize="11" Foreground="{DynamicResource App.TextMuted}"
+                                   Margin="6,0,6,8"
+                                   Text="Live stroke position from the Preview device."/>
+                    </Grid>
+                </Border>
             </Grid>
 
             <!-- ============ RIGHT COLUMN ============ -->
@@ -1898,7 +2371,7 @@
                         </Button>
                     </Grid>
 
-                    <Border Grid.Row="6" Height="1" Background="{DynamicResource App.Border}"/>
+                    <!-- (Row-6 divider under Reconnect removed for a cleaner look — toggles flow straight into the panel beneath.) -->
 
                     <!-- Settings popup (opened by the Settings button) -->
                     <Popup x:Name="SettingsPopup" Grid.Row="7"
@@ -1967,7 +2440,7 @@
                                               Content="Custom save-data location" VerticalAlignment="Center"
                                               Checked="CustomSaveLoc_Toggled" Unchecked="CustomSaveLoc_Toggled"/>
                                     <ToggleButton Grid.Column="1" x:Name="infoSaveLoc" Style="{StaticResource InfoDot}"/>
-                                    <Popup PlacementTarget="{Binding ElementName=infoSaveLoc}" Placement="Bottom" StaysOpen="False"
+                                    <Popup PlacementTarget="{Binding ElementName=infoSaveLoc}" Placement="Bottom" StaysOpen="False" HorizontalOffset="-280"
                                            AllowsTransparency="True" PopupAnimation="Fade" IsOpen="{Binding IsChecked, ElementName=infoSaveLoc}">
                                         <Border Style="{StaticResource InfoPopupCard}">
                                             <TextBlock Style="{StaticResource InfoPopupText}"
@@ -1987,53 +2460,6 @@
                                 </Grid>
                                 <Border Height="1" Background="#5A6273" Margin="0,14,0,10"/>
 
-                                <Grid>
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Games Location  ·  EDI / Script Player" Foreground="{DynamicResource App.Text}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    <ToggleButton Grid.Column="1" x:Name="infoGameLoc" Style="{StaticResource InfoDot}"/>
-                                    <Popup PlacementTarget="{Binding ElementName=infoGameLoc}" Placement="Bottom" StaysOpen="False"
-                                           AllowsTransparency="True" PopupAnimation="Fade" IsOpen="{Binding IsChecked, ElementName=infoGameLoc}">
-                                        <Border Style="{StaticResource InfoPopupCard}">
-                                            <TextBlock Style="{StaticResource InfoPopupText}"
-                                                       Text="Root folder holding your EDI and Script Player games. A game inside it shows that folder's custom icon on its card; each game's EDI/Script Player type is set when you add or edit it."/>
-                                        </Border>
-                                    </Popup>
-                                </Grid>
-                                <Grid Margin="0,4,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="8"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox Grid.Column="0" x:Name="txtGameFolder" Height="30" VerticalContentAlignment="Center"/>
-                                    <Button  Grid.Column="2" x:Name="btnBrowseGameFolder" Content="Browse…" Height="30" Width="84" Click="BrowseGameFolder_Click"
-                                             BorderBrush="{DynamicResource App.Border}" BorderThickness="1"/>
-                                </Grid>
-                                <Border Background="{DynamicResource App.PanelBg}" BorderBrush="{DynamicResource App.Border}" BorderThickness="1" CornerRadius="4" Padding="8,5" Margin="0,6,0,0">
-                                    <TextBlock Foreground="{DynamicResource App.TextMuted}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
-                                               Text="Root folder holding your EDI and Script Player games. A game inside it shows that folder's custom icon on its card; each game's EDI/Script Player type is set when you add or edit it."/>
-                                </Border>
-
-                                <!-- Auto mode: scan the folder above and add every set-up game at once -->
-                                <Grid Margin="0,8,0,0">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <Button Grid.Column="0" x:Name="btnAutoAddGames" Height="34" HorizontalAlignment="Stretch"
-                                            Click="AutoAddGames_Click" Style="{StaticResource AccentButton}"
-                                            ToolTip="Scan the Games Location and add every game that has an EdiConfig.json, auto-detecting its files">
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="&#xE721;" FontFamily="Segoe MDL2 Assets" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Auto-add all games from this folder" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </Button>
-                                    <ToggleButton Grid.Column="1" x:Name="infoAutoAdd" Style="{StaticResource InfoDot}" Margin="8,0,0,0"/>
-                                    <Popup PlacementTarget="{Binding ElementName=infoAutoAdd}" Placement="Bottom" StaysOpen="False"
-                                           AllowsTransparency="True" PopupAnimation="Fade" IsOpen="{Binding IsChecked, ElementName=infoAutoAdd}">
-                                        <Border Style="{StaticResource InfoPopupCard}">
-                                            <TextBlock Style="{StaticResource InfoPopupText}"
-                                                       Text="Scans every folder here and adds the ones that already contain an EdiConfig.json — guessing each game's executable, gallery/scripts, info doc and type. Skips games already in your list."/>
-                                        </Border>
-                                    </Popup>
-                                </Grid>
 
                                 <Border Height="1" Background="#5A6273" Margin="0,14,0,10"/>
 
@@ -2041,7 +2467,7 @@
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Funscript Player Location" Foreground="{DynamicResource App.Text}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     <ToggleButton Grid.Column="1" x:Name="infoFunscriptPlayer" Style="{StaticResource InfoDot}"/>
-                                    <Popup PlacementTarget="{Binding ElementName=infoFunscriptPlayer}" Placement="Bottom" StaysOpen="False"
+                                    <Popup PlacementTarget="{Binding ElementName=infoFunscriptPlayer}" Placement="Bottom" StaysOpen="False" HorizontalOffset="-280"
                                            AllowsTransparency="True" PopupAnimation="Fade" IsOpen="{Binding IsChecked, ElementName=infoFunscriptPlayer}">
                                         <Border Style="{StaticResource InfoPopupCard}">
                                             <TextBlock Style="{StaticResource InfoPopupText}"
@@ -2067,7 +2493,7 @@
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="SteamGridDB cover art" Foreground="{DynamicResource App.Text}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     <ToggleButton Grid.Column="1" x:Name="infoSteamGrid" Style="{StaticResource InfoDot}"/>
-                                    <Popup PlacementTarget="{Binding ElementName=infoSteamGrid}" Placement="Bottom" StaysOpen="False"
+                                    <Popup PlacementTarget="{Binding ElementName=infoSteamGrid}" Placement="Bottom" StaysOpen="False" HorizontalOffset="-280"
                                            AllowsTransparency="True" PopupAnimation="Fade" IsOpen="{Binding IsChecked, ElementName=infoSteamGrid}">
                                         <Border Style="{StaticResource InfoPopupCard}">
                                             <TextBlock Style="{StaticResource InfoPopupText}"
@@ -2102,23 +2528,21 @@
 
                                 <Border Height="1" Background="#5A6273" Margin="0,12,0,10"/>
 
-                                <CheckBox x:Name="chkMoveGame" Style="{StaticResource ToggleSwitch}"
-                                          Content="Move game layout" VerticalAlignment="Center"/>
-                                <Border Background="{DynamicResource App.PanelBg}" BorderBrush="{DynamicResource App.Border}" BorderThickness="1" CornerRadius="4" Padding="8,5" Margin="0,6,0,0">
+                                <!-- "Move game layout" used to live here, but the GAME panel is its own AvalonDock
+                                     pane now, so that toggle is gone — the card layout is always on. The Info
+                                     toggle moved into Panels (it controls the Info pane's auto-hide behavior). -->
+
+                                <!-- Hard kill-switch for auto-launch via EdiConfig.json's ExecuteOnReady.
+                                     ON (default) blocks every device-ready auto-launch; OFF re-enables
+                                     the legacy ExecuteOnReady string behavior. Persists separately from
+                                     Save Settings — wired through Checked/Unchecked. -->
+                                <CheckBox x:Name="chkBlockAutoLaunch" Style="{StaticResource ToggleSwitch}"
+                                          Content="Block auto-launch when device connects" VerticalAlignment="Center"
+                                          Checked="BlockAutoLaunch_Toggled" Unchecked="BlockAutoLaunch_Toggled"/>
+                                <Border Background="{DynamicResource App.PanelBg}" BorderBrush="{DynamicResource App.Border}" BorderThickness="1" CornerRadius="4" Padding="8,5" Margin="0,6,0,12">
                                     <TextBlock Foreground="{DynamicResource App.TextMuted}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
-                                               Text="Show games as a clickable card list, with Select Game + Launch above (instead of the dropdown)."/>
+                                               Text="On (default): never auto-launches a game when a device becomes ready. Off: respects EdiConfig.json's ExecuteOnReady — runs that command/path once per session as soon as a device is connected."/>
                                 </Border>
-
-                                <Border Height="1" Background="#5A6273" Margin="0,12,0,10"/>
-
-                                <CheckBox x:Name="chkShowInfo" Style="{StaticResource ToggleSwitch}"
-                                          Content="Info" VerticalAlignment="Center"/>
-                                <Border Background="{DynamicResource App.PanelBg}" BorderBrush="{DynamicResource App.Border}" BorderThickness="1" CornerRadius="4" Padding="8,5" Margin="0,6,0,0">
-                                    <TextBlock Foreground="{DynamicResource App.TextMuted}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
-                                               Text="When on, the Info panel shows to the right of Options only if the selected game has an info file (its Info Location, or an Info.txt / .md / .pdf next to Edi.exe). Games without one show nothing."/>
-                                </Border>
-
-                                <Border Height="1" Background="#5A6273" Margin="0,12,0,10"/>
 
                                 <CheckBox x:Name="chkStackLauncher" Style="{StaticResource ToggleSwitch}"
                                           Content="Stack launcher URL under name" VerticalAlignment="Center"
@@ -2146,71 +2570,329 @@
                                           Tag="log" Checked="PanelToggle_Toggled" Unchecked="PanelToggle_Toggled"/>
                                 <CheckBox x:Name="chkPanelOptions" Style="{StaticResource ToggleSwitch}" Content="Devices" Margin="0,0,0,5"
                                           Tag="options" Checked="PanelToggle_Toggled" Unchecked="PanelToggle_Toggled"/>
-                                <CheckBox x:Name="chkPanelFm" Style="{StaticResource ToggleSwitch}" Content="FM Converter"
+                                <!-- Info pane: when ON, it auto-hides for games that don't have an info file
+                                     (only games WITH info appear). When OFF, the pane never shows. -->
+                                <CheckBox x:Name="chkShowInfo" Style="{StaticResource ToggleSwitch}" Content="Info" Margin="0,0,0,5"
+                                          ToolTip="Auto-hides the Info pane unless the selected game has an info file (per-game Info Location, or Info.txt / .md / .pdf next to Edi.exe)."/>
+                                <CheckBox x:Name="chkPanelFm" Style="{StaticResource ToggleSwitch}" Content="FM Converter" Margin="0,0,0,5"
                                           Tag="fmconverter" Checked="PanelToggle_Toggled" Unchecked="PanelToggle_Toggled"
                                           ToolTip="Show the rotary fuck-machine script converter in its own window"/>
+                                <!-- Preview Player: docked vertical-bar visualizer for the simulated PreviewDevice.
+                                     Replaces the old floating SimulateGame window — same vertical ProgressBar, but
+                                     hosted as an AvalonDock anchorable so it can sit next to Devices / FM. -->
+                                <CheckBox x:Name="chkPanelPreviewPlayer" Style="{StaticResource ToggleSwitch}" Content="Preview Player" Margin="0,0,0,5"
+                                          Tag="previewplayer" Checked="PanelToggle_Toggled" Unchecked="PanelToggle_Toggled"
+                                          ToolTip="Show a vertical bar that visualizes the live PreviewDevice position — handy for testing scripts without hardware."/>
+                                <!-- Preview Device (line dot): in-Playback line visualizer fed by the same Preview
+                                     device. Independent from the Preview Player panel above. -->
+                                <CheckBox x:Name="chkPreviewDevice" Style="{StaticResource ToggleSwitch}" Content="Preview Device (line)"
+                                          VerticalAlignment="Center" Margin="0,0,0,5"
+                                          Checked="PreviewDevice_Toggled" Unchecked="PreviewDevice_Toggled"
+                                          ToolTip="Drive the live dot on the Playback line from the PreviewDevice — lets the Playback visualizer move without a real device. Also appears in EDI's API device list — turn OFF if it interferes with a game's integration."/>
                                 <Border Background="{DynamicResource App.PanelBg}" BorderBrush="{DynamicResource App.Border}" BorderThickness="1" CornerRadius="4" Padding="8,5" Margin="0,8,0,0">
                                     <TextBlock Foreground="{DynamicResource App.TextMuted}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
-                                               Text="Show or hide each dock panel. Hidden panels can be brought back here anytime."/>
-                                </Border>
-                              </StackPanel>
-                            </TabItem>
-
-                            <!-- ===== Dev tab ===== -->
-                            <TabItem Header="Dev" Style="{StaticResource SettingsTabItem}">
-                              <StackPanel>
-                                <CheckBox x:Name="chkPreviewDevice" Style="{StaticResource ToggleSwitch}" Content="Preview device"
-                                          VerticalAlignment="Center"
-                                          Checked="PreviewDevice_Toggled" Unchecked="PreviewDevice_Toggled"/>
-                                <Border Background="{DynamicResource App.PanelBg}" BorderBrush="{DynamicResource App.Border}" BorderThickness="1" CornerRadius="4" Padding="8,5" Margin="0,6,0,0">
-                                    <TextBlock Foreground="{DynamicResource App.TextMuted}" FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
-                                               Text="Loads a hidden 'Preview Device' so the Playback panel can visualize the live script. It also shows up in EDI's API device list / to in-game mods — turn this OFF if it interferes with a game's integration."/>
+                                               Text="Show or hide each panel. Hidden panels can be brought back here anytime. (Preview Device opens a small always-on-top window rather than an AvalonDock pane.)"/>
                                 </Border>
                               </StackPanel>
                             </TabItem>
                           </TabControl>
 
-                          <Button x:Name="btnSettingsSave" Content="Save" Height="28" Width="84"
-                                  HorizontalAlignment="Right" Margin="0,12,0,0" Click="SettingsSave_Click"/>
+                          <!-- Dedicated Save bar at the bottom of the Settings popup, visually separate
+                               from the tab content above (full-width strip with a top divider). -->
+                          <Border Background="{DynamicResource App.PanelBg}"
+                                  BorderBrush="{DynamicResource App.BorderStrong}"
+                                  BorderThickness="0,1,0,0"
+                                  Margin="-12,14,-12,-10"
+                                  Padding="12,10">
+                              <Button x:Name="btnSettingsSave" Content="Save" Height="30" Width="120"
+                                      HorizontalAlignment="Right" Click="SettingsSave_Click"
+                                      Background="{DynamicResource App.Accent}" Foreground="White"
+                                      BorderThickness="0" FontWeight="SemiBold"
+                                      ToolTip="Save settings"/>
+                          </Border>
                         </StackPanel>
+                        </Border>
+                    </Popup>
+
+                    <!-- ===== Games sub-popup (sibling of SettingsPopup — opens from the nav-bar gamepad
+                         icon, INDEPENDENT of Settings being open). Self-contained styles (InfoDot,
+                         InfoPopupCard, InfoPopupText) duplicated locally so the resource lookup doesn't
+                         depend on SettingsPopup's content tree. ===== -->
+                    <Popup x:Name="SettingsGamesPopup" Grid.Row="7"
+                           PlacementTarget="{Binding ElementName=btnSettingsGames}"
+                           Placement="Bottom" StaysOpen="False"
+                           AllowsTransparency="True" PopupAnimation="Fade"
+                           HorizontalOffset="-220" VerticalOffset="6">
+                        <Border Background="{DynamicResource App.PanelBgHi}"
+                                BorderBrush="{DynamicResource App.BorderStrong}"
+                                BorderThickness="1"
+                                CornerRadius="6" Padding="14,12" Width="340" Margin="8">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.5" Color="#FF000000"/>
+                            </Border.Effect>
+                            <StackPanel>
+                                <StackPanel.Resources>
+                                    <Style x:Key="InfoDot" TargetType="ToggleButton">
+                                        <Setter Property="Width" Value="18"/>
+                                        <Setter Property="Height" Value="18"/>
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                        <Setter Property="VerticalAlignment" Value="Center"/>
+                                        <Setter Property="ToolTip" Value="What's this?"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ToggleButton">
+                                                    <Border x:Name="b" CornerRadius="9" BorderThickness="1.2"
+                                                            BorderBrush="{DynamicResource App.AccentAlt}" Background="Transparent">
+                                                        <TextBlock Text="i" FontStyle="Italic" FontWeight="Bold" FontSize="11"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource App.AccentAlt}" TextOptions.TextFormattingMode="Ideal"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="#22FF3D93"/></Trigger>
+                                                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="b" Property="Background" Value="#33FF3D93"/></Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                    <Style x:Key="InfoPopupCard" TargetType="Border">
+                                        <Setter Property="Background" Value="{DynamicResource App.PanelBgHi}"/>
+                                        <Setter Property="BorderBrush" Value="{DynamicResource App.BorderStrong}"/>
+                                        <Setter Property="BorderThickness" Value="1"/>
+                                        <Setter Property="CornerRadius" Value="6"/>
+                                        <Setter Property="Padding" Value="11,9"/>
+                                        <Setter Property="MaxWidth" Value="300"/>
+                                        <Setter Property="Margin" Value="0,4,8,8"/>
+                                        <Setter Property="Effect">
+                                            <Setter.Value><DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.5" Color="#FF000000"/></Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                    <Style x:Key="InfoPopupText" TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource App.TextMuted}"/>
+                                        <Setter Property="FontSize" Value="11.5"/>
+                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
+                                    </Style>
+                                </StackPanel.Resources>
+                                <TextBlock Text="Games" FontSize="14" FontWeight="Bold"
+                                           Foreground="{DynamicResource App.Text}" Margin="0,0,0,10"/>
+                                <!-- Games Location wrapped in its own card so it reads as a distinct
+                                     module (matching the FieldCard look used in Game Settings).
+                                     Header centers above; textbox + Browse pair sits centered below. -->
+                                <Border Background="{DynamicResource App.PanelBg}"
+                                        BorderBrush="{DynamicResource App.Border}" BorderThickness="1"
+                                        CornerRadius="6" Padding="12,10,12,12">
+                                    <StackPanel>
+                                        <Grid HorizontalAlignment="Center" Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Games Location  ·  EDI / Script Player"
+                                                       Foreground="{DynamicResource App.Text}" FontWeight="SemiBold"
+                                                       FontSize="13" VerticalAlignment="Center"
+                                                       TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                            <ToggleButton Grid.Column="1" x:Name="infoGameLoc" Style="{StaticResource InfoDot}" Margin="8,0,0,0"/>
+                                            <Popup PlacementTarget="{Binding ElementName=infoGameLoc}" Placement="Bottom" StaysOpen="False" HorizontalOffset="-260"
+                                                   AllowsTransparency="True" PopupAnimation="Fade" IsOpen="{Binding IsChecked, ElementName=infoGameLoc}">
+                                                <Border Style="{StaticResource InfoPopupCard}">
+                                                    <TextBlock Style="{StaticResource InfoPopupText}"
+                                                               Text="Root folder holding your EDI and Script Player games. A game inside it shows that folder's custom icon on its card; each game's EDI/Script Player type is set when you add or edit it."/>
+                                                </Border>
+                                            </Popup>
+                                        </Grid>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="8"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0" x:Name="txtGameFolder" Height="30" VerticalContentAlignment="Center"
+                                                     TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                            <Button  Grid.Column="2" x:Name="btnBrowseGameFolder" Content="Browse…" Height="30" Width="84" Click="BrowseGameFolder_Click"
+                                                     BorderBrush="{DynamicResource App.Border}" BorderThickness="1"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                                <!-- Auto-add — pink-filled (Accent). Search glyph (E721) plus matching layout
+                                     and Height with Find-missing below so the two read as a paired action set. -->
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" x:Name="btnAutoAddGames" Height="34" HorizontalAlignment="Stretch"
+                                            Click="AutoAddGames_Click" Style="{StaticResource AccentButton}"
+                                            ToolTip="Scan the Games Location and add every game that has an EdiConfig.json, auto-detecting its files">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Auto-add all games from this folder" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <ToggleButton Grid.Column="1" x:Name="infoAutoAdd" Style="{StaticResource InfoDot}" Margin="8,0,0,0"/>
+                                    <Popup PlacementTarget="{Binding ElementName=infoAutoAdd}" Placement="Bottom" StaysOpen="False" HorizontalOffset="-280"
+                                           AllowsTransparency="True" PopupAnimation="Fade" IsOpen="{Binding IsChecked, ElementName=infoAutoAdd}">
+                                        <Border Style="{StaticResource InfoPopupCard}">
+                                            <TextBlock Style="{StaticResource InfoPopupText}"
+                                                       Text="Scans every folder here and adds the ones that already contain an EdiConfig.json — guessing each game's executable, gallery/scripts, info doc and type. Skips games already in your list."/>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+                                <!-- Find missing — cyan-filled (AccentAlt) so the two filled buttons read
+                                     as distinct actions. Same Height/Stretch + Grid layout as Auto-add.
+                                     Picture glyph (E91B) signals "art" without leaning on the same magnifier. -->
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" x:Name="btnFindMissingCovers" Height="34" HorizontalAlignment="Stretch"
+                                            Click="FindMissingCovers_Click" Style="{StaticResource AccentAltButton}"
+                                            ToolTip="Walk every library game missing a banner or icon and fill them in. See the info popup for the resolution chain.">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="&#xE91B;" FontFamily="Segoe MDL2 Assets" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Find missing banners / icons" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <ToggleButton Grid.Column="1" x:Name="infoFindCovers" Style="{StaticResource InfoDot}" Margin="8,0,0,0"/>
+                                    <Popup PlacementTarget="{Binding ElementName=infoFindCovers}" Placement="Bottom" StaysOpen="False" HorizontalOffset="-280"
+                                           AllowsTransparency="True" PopupAnimation="Fade" IsOpen="{Binding IsChecked, ElementName=infoFindCovers}">
+                                        <Border Style="{StaticResource InfoPopupCard}">
+                                            <TextBlock Style="{StaticResource InfoPopupText}"
+                                                       Text="Walks every game in your library and fills in missing art.&#x0a;&#x0a;BANNERS: queries DLsite → F95 → itch.io → SteamGridDB until one returns a match. Saved to &lt;OutputDir&gt;\covers.&#x0a;&#x0a;ICONS are resolved per-card in this order — the first source that hits wins:&#x0a;  1. Custom IconPath set via right-click → Icon (file / URL / SteamGridDB fetch)&#x0a;  2. The game folder's custom icon (folder Properties → Customize)&#x0a;  3. An .ico file inside the game folder&#x0a;  4. The game's .exe icon&#x0a;&#x0a;This button back-fills #1 by querying SteamGridDB's /icons endpoint for every library game without an IconPath (needs the API key in Settings → Data)."/>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+                            </StackPanel>
                         </Border>
                     </Popup>
 
                     <!-- DEVICES header + Reconnect moved up into the toggles row; pane title is "Devices". -->
 
-                    <DataGrid Grid.Row="13" x:Name="DevicesGrid" ItemsSource="{Binding devices}" AutoGenerateColumns="False" BorderThickness="1">
-                        <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="Name" Width="*">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="&#xE702;" FontFamily="Segoe MDL2 Assets" FontSize="16"
-                                                       Foreground="{DynamicResource App.Accent}" VerticalAlignment="Center" Margin="2,0,10,0"/>
-                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="Selected Variant" Width="*">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <ComboBox x:Name="Variants" ItemsSource="{Binding Variants}" SelectionChanged="Variants_SelectionChanged" SelectedItem="{Binding SelectedVariant, Mode=TwoWay}"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Ready" FontFamily="Segoe UI Emoji" FontSize="14" Binding="{Binding IsReady, Converter={StaticResource BoolToReadyIconConverter}, Mode=OneWay}" Width="64"/>
-                            <DataGridTemplateColumn Header="Channel" Visibility="Collapsed">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <ComboBox x:Name="Channels"
-                                  ItemsSource="{Binding DataContext.channels, RelativeSource={RelativeSource AncestorType=Window}}"
-                                  SelectionChanged="Channels_SelectionChanged"
-                                  SelectedValue="{Binding Channel, Mode=TwoWay}"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <!-- Wrapped in a card-style box so the DataGrid reads as a contained module
+                         instead of a bare table flush against the panel. Each DataGridRow is now
+                         styled as its own dark, outlined sub-card with a small gap between rows,
+                         so devices stack as discrete boxes rather than flush table rows. -->
+                    <Border Grid.Row="13" Background="{DynamicResource App.PanelBg}"
+                            BorderBrush="{DynamicResource App.Border}" BorderThickness="1"
+                            CornerRadius="6" Padding="6">
+                        <DataGrid x:Name="DevicesGrid" ItemsSource="{Binding devices}" AutoGenerateColumns="False"
+                                  Background="Transparent" BorderThickness="0"
+                                  HeadersVisibility="Column" GridLinesVisibility="None" RowHeight="44"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <DataGrid.Resources>
+                                <!-- Each row gets a subtle grey card background + 1px outline so the
+                                     three devices stack as discrete boxes. Rounded corners + a tiny
+                                     vertical margin gives the stack visible spacing without a divider. -->
+                                <Style TargetType="DataGridRow">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <!-- Pin Foreground to App.Text so the row text stays white when the
+                                         window loses focus (default DataGridRow style falls back to
+                                         SystemColors.GrayTextBrush for inactive selection). -->
+                                    <Setter Property="Foreground" Value="{DynamicResource App.Text}"/>
+                                    <Setter Property="Margin"     Value="0,3,0,3"/>
+                                    <Setter Property="SnapsToDevicePixels" Value="True"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="DataGridRow">
+                                                <Border x:Name="rowBd" CornerRadius="0"
+                                                        Background="#19222D"
+                                                        BorderBrush="#33445566" BorderThickness="1"
+                                                        SnapsToDevicePixels="True"
+                                                        TextElement.Foreground="{DynamicResource App.Text}">
+                                                    <DataGridCellsPresenter ItemsPanel="{TemplateBinding ItemsPanel}"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="rowBd" Property="BorderBrush" Value="{DynamicResource App.BorderStrong}"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="rowBd" Property="BorderBrush" Value="{DynamicResource App.Accent}"/>
+                                                        <Setter TargetName="rowBd" Property="Background"  Value="#1F2A38"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                                <!-- Strip the default DataGridCell chrome so the row's outlined box is
+                                     the only visible frame (no extra blue selection borders inside). -->
+                                <Style TargetType="DataGridCell">
+                                    <Setter Property="Background"      Value="Transparent"/>
+                                    <Setter Property="BorderBrush"     Value="Transparent"/>
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="DataGridCell">
+                                                <Border Background="{TemplateBinding Background}" Padding="0">
+                                                    <ContentPresenter VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </DataGrid.Resources>
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Header="Name" Width="*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="6,0">
+                                                <TextBlock Text="&#xE702;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                                           Foreground="{DynamicResource App.Accent}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource App.Text}"
+                                                           TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Selected Variant" Width="*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ComboBox x:Name="Variants" ItemsSource="{Binding Variants}"
+                                                      SelectionChanged="Variants_SelectionChanged"
+                                                      SelectedItem="{Binding SelectedVariant, Mode=TwoWay}"
+                                                      Height="28" Margin="6,0" Padding="8,2"
+                                                      VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                                      FontSize="13" FontWeight="SemiBold"
+                                                      Foreground="{DynamicResource App.Text}"
+                                                      TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <!-- Ready: ✓ green when connected, ✕ red when not. Replaces the
+                                     monochrome emoji column so connection state reads at a glance. -->
+                                <DataGridTemplateColumn Header="Ready" Width="64">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="18"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="&#xE711;"/>
+                                                        <Setter Property="Foreground" Value="#FF5C7A"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsReady}" Value="True">
+                                                                <Setter Property="Text" Value="&#xE73E;"/>
+                                                                <Setter Property="Foreground" Value="#2EE07A"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Channel" Visibility="Collapsed">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ComboBox x:Name="Channels"
+                                      ItemsSource="{Binding DataContext.channels, RelativeSource={RelativeSource AncestorType=Window}}"
+                                      SelectionChanged="Channels_SelectionChanged"
+                                      SelectedValue="{Binding Channel, Mode=TwoWay}"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
 
                     <!-- Empty-state message shown when no devices are connected -->
                     <TextBlock Grid.Row="13" IsHitTestVisible="False"
@@ -2245,7 +2927,10 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <Label  Grid.Column="0" Content="INFO" Style="{StaticResource SectionHeader}" VerticalAlignment="Center" Visibility="Collapsed"/>
-                        <Button Grid.Column="1" x:Name="btnInfoOpen" Content="Open PDF" Height="24" Width="84"
+                        <!-- Pulled in with a bit of left+bottom margin so the button never touches
+                             the Info content card directly beneath it. -->
+                        <Button Grid.Column="1" x:Name="btnInfoOpen" Content="Open PDF" Height="26" Width="90"
+                                Margin="8,4,4,8"
                                 Click="InfoOpen_Click" Visibility="Collapsed"/>
                     </Grid>
                     <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource App.Border}" Margin="0,4,0,8" Visibility="Collapsed"/>
@@ -2308,22 +2993,44 @@
                 <SolidColorBrush x:Key="{ComponentResourceKey TypeInTargetAssembly={x:Type adkeys:ResourceKeys}, ResourceId=ToolWindowTabUnselectedHoveredBackground}" Color="#FF2A3142"/>
 
                 <!-- Bigger pane tabs (Playback / Log / Devices) with the title inset from the edges so it
-                     never crowds the selected-tab fill. Full template so size/padding are ours to set. -->
+                     never crowds the selected-tab fill. Full template so size/padding are ours to set.
+                     `bd` keeps a transparent 1px border by default so the active-hover state can light
+                     it red without resizing the tab. TextTrimming=None + UseLayoutRounding stop the
+                     title from chopping on the right when AvalonDock measures the strip. -->
                 <Style TargetType="{x:Type avalonDock:LayoutAnchorableTabItem}">
                     <Setter Property="Template">
                         <Setter.Value>
                             <ControlTemplate TargetType="{x:Type avalonDock:LayoutAnchorableTabItem}">
                                 <Border x:Name="bd" Background="Transparent" CornerRadius="6,6,0,0"
-                                        Margin="2,3,0,0" Padding="14,8" SnapsToDevicePixels="True">
+                                        BorderBrush="Transparent" BorderThickness="1"
+                                        Margin="2,3,0,0" Padding="14,8,16,8" SnapsToDevicePixels="True" UseLayoutRounding="True">
+                                    <!-- Wider right padding (16) keeps "Games" / "Devices" from kissing the
+                                         tab edge after WPF rounds the measure. Image gets collapsed when the
+                                         anchorable has no IconSource (most of EDI's panes don't), reclaiming
+                                         the 14+8px slot for the text. -->
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <Image x:Name="tabIco" Source="{Binding Model.IconSource, RelativeSource={RelativeSource TemplatedParent}}"
-                                               Width="14" Height="14" Margin="0,0,8,0" VerticalAlignment="Center" SnapsToDevicePixels="True" Opacity="0.9"/>
+                                               Width="14" Height="14" Margin="0,0,8,0" VerticalAlignment="Center" SnapsToDevicePixels="True" Opacity="0.9">
+                                            <Image.Style>
+                                                <Style TargetType="Image">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Source, RelativeSource={RelativeSource Self}}" Value="{x:Null}">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Image.Style>
+                                        </Image>
                                         <TextBlock x:Name="txt" Text="{Binding Model.Title, RelativeSource={RelativeSource TemplatedParent}}"
-                                                   Foreground="#FFD6DAE2" VerticalAlignment="Center" FontSize="12.5" FontWeight="SemiBold"
-                                                   TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+                                                   Foreground="#FFD6DAE2" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold"
+                                                   TextTrimming="None" TextWrapping="NoWrap" Margin="0,0,2,0"
+                                                   TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"
+                                                   SnapsToDevicePixels="True" UseLayoutRounding="True"/>
                                     </StackPanel>
                                 </Border>
                                 <ControlTemplate.Triggers>
+                                    <!-- Default hover (not the active tab): subtle dark fill. -->
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter TargetName="bd"  Property="Background" Value="#FF333B4B"/>
                                         <Setter TargetName="txt" Property="Foreground" Value="#FFFFFFFF"/>
@@ -2344,6 +3051,19 @@
                                         </Setter>
                                         <Setter TargetName="tabIco" Property="Opacity" Value="1"/>
                                     </DataTrigger>
+                                    <!-- Hover-on-already-selected: the dark hover overlay looks bad on the
+                                         pink fill, so instead show a thin red outline (and keep the pink
+                                         background unchanged). Listed AFTER the IsSelected trigger so its
+                                         setters win when both apply. -->
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding RelativeSource={RelativeSource Self}, Path=IsMouseOver}" Value="True"/>
+                                            <Condition Binding="{Binding Model.IsSelected, RelativeSource={RelativeSource TemplatedParent}}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter TargetName="bd" Property="Background" Value="#FF2D8C"/>
+                                        <Setter TargetName="bd" Property="BorderBrush" Value="#FFFF3358"/>
+                                        <Setter TargetName="bd" Property="BorderThickness" Value="1"/>
+                                    </MultiDataTrigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Setter.Value>
@@ -2357,7 +3077,7 @@
                             <avalonDock:LayoutAnchorable x:Name="anchConnection" Title="Legacy Connection" ContentId="connection" CanClose="False" CanHide="True"/>
                         </avalonDock:LayoutAnchorablePane>
                         <avalonDock:LayoutAnchorablePane>
-                            <avalonDock:LayoutAnchorable x:Name="anchGame" Title="GAME" ContentId="game" CanClose="False" CanHide="True"/>
+                            <avalonDock:LayoutAnchorable x:Name="anchGame" Title="Games" ContentId="game" CanClose="False" CanHide="True"/>
                         </avalonDock:LayoutAnchorablePane>
                     </avalonDock:LayoutPanel>
                     <avalonDock:LayoutPanel Orientation="Vertical" DockWidth="2*">
@@ -2373,8 +3093,9 @@
                     </avalonDock:LayoutPanel>
                     <avalonDock:LayoutAnchorablePane DockWidth="1.5*">
                         <avalonDock:LayoutAnchorable x:Name="anchOptions" Title="Devices" ContentId="options" CanClose="False" CanHide="True"/>
-                        <avalonDock:LayoutAnchorable x:Name="anchInfo" Title="INFO" ContentId="info" CanClose="False" CanHide="True"/>
+                        <avalonDock:LayoutAnchorable x:Name="anchInfo" Title="Info" ContentId="info" CanClose="False" CanHide="True"/>
                         <avalonDock:LayoutAnchorable x:Name="anchFm" Title="FM Converter" ContentId="fmconverter" CanClose="False" CanHide="True"/>
+                        <avalonDock:LayoutAnchorable x:Name="anchPreviewPlayer" Title="Preview Player" ContentId="previewplayer" CanClose="False" CanHide="True"/>
                     </avalonDock:LayoutAnchorablePane>
                 </avalonDock:LayoutPanel>
             </avalonDock:LayoutRoot>

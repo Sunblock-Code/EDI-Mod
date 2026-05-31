@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="EDI"
         Icon="pack://application:,,,/Edi.ico"
-        SizeToContent="Height" Width="500"
+        SizeToContent="Height" Width="600"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
@@ -33,26 +33,59 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Message -->
-            <DockPanel Grid.Row="0" Margin="22,22,22,16">
-                <TextBlock x:Name="icon" DockPanel.Dock="Left" Text="&#xE897;"
+            <!-- Message layout: icon on the left, header on its own column to the left of the
+                 body. The body lives in a soft, bordered card so it visually reads as the
+                 "description" of the action being confirmed. Input field (when shown) spans
+                 the full width below the header/body row. -->
+            <Grid Grid.Row="0" Margin="20,18,20,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>   <!-- 0 icon -->
+                    <ColumnDefinition Width="Auto"/>   <!-- 1 header column -->
+                    <ColumnDefinition Width="*"/>      <!-- 2 body card -->
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>     <!-- 0 header + body -->
+                    <RowDefinition Height="Auto"/>     <!-- 1 input -->
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" x:Name="icon" Text="&#xE8FB;"
                            FontFamily="Segoe MDL2 Assets" FontSize="26"
                            Foreground="{DynamicResource App.Accent}"
-                           VerticalAlignment="Top" Margin="0,0,16,0"/>
-                <StackPanel>
-                    <TextBlock x:Name="lblHeader" FontSize="15" FontWeight="SemiBold"
-                               Foreground="#FFFFFF" TextWrapping="Wrap" Margin="0,0,0,10"/>
-                    <TextBlock x:Name="lblBody" Foreground="{DynamicResource App.TextMuted}"
-                               FontSize="13" TextWrapping="Wrap" LineHeight="20"/>
-                    <TextBox x:Name="txtInput" Visibility="Collapsed" Height="32" Margin="0,12,0,0"
-                             VerticalContentAlignment="Center" FontSize="13"/>
-                </StackPanel>
-            </DockPanel>
+                           VerticalAlignment="Center" Margin="0,0,16,0"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="lblHeader" FontSize="16" FontWeight="SemiBold"
+                           Foreground="#FFFFFF" TextWrapping="NoWrap" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                <!-- Body card: subtle panel background + accent left edge so the description
+                     reads as a distinct, polished block instead of loose paragraph text. -->
+                <Border Grid.Row="0" Grid.Column="2"
+                        Background="{DynamicResource App.PanelBg}"
+                        BorderBrush="{DynamicResource App.Border}" BorderThickness="1,1,1,1"
+                        CornerRadius="6" Padding="12,9" VerticalAlignment="Center">
+                    <Border.Resources>
+                        <Style TargetType="Border"/>
+                    </Border.Resources>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Background="{DynamicResource App.Accent}" CornerRadius="2" Margin="-12,-9,8,-9"/>
+                        <TextBlock Grid.Column="1" x:Name="lblBody" Foreground="{DynamicResource App.TextMuted}"
+                                   FontSize="13" TextWrapping="Wrap" LineHeight="19"
+                                   TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+
+                <TextBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" x:Name="txtInput"
+                         Visibility="Collapsed" Height="34" Margin="0,14,0,0"
+                         VerticalContentAlignment="Center" FontSize="13"
+                         TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType"/>
+            </Grid>
 
             <!-- Action bar -->
             <Border Grid.Row="1" Background="{DynamicResource App.HeaderBg}"
                     BorderBrush="{DynamicResource App.Border}" BorderThickness="0,1,0,0"
-                    Padding="14,12">
+                    Padding="14,10">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="btnNo"  Content="No"  Style="{StaticResource DialogButton}"       Click="No_Click"  IsCancel="True"/>
                     <Button x:Name="btnYes" Content="Yes" Style="{StaticResource DialogButtonAccent}" Click="Yes_Click" IsDefault="True"/>

@@ -36,14 +36,15 @@
                            TextTrimming="CharacterEllipsis" MaxWidth="240"/>
             </Border>
 
-            <!-- Empty state: boxed at top-left (same spot as the name chip); trailing dots animate -->
+            <!-- Empty state: pink-outlined pill matching the rest of the app's accent. Trailing dots animate. -->
             <Border x:Name="lblEmpty" VerticalAlignment="Top" HorizontalAlignment="Left" Margin="6,6"
-                    Background="#B3000000" CornerRadius="3" Padding="8,4">
+                    Background="#B3000000" CornerRadius="3" Padding="8,4"
+                    BorderBrush="{DynamicResource App.Accent}" BorderThickness="1">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="Waiting for playback" FontSize="11" FontWeight="SemiBold"
-                               Foreground="{DynamicResource App.TextMuted}" VerticalAlignment="Center"/>
+                               Foreground="{DynamicResource App.Accent}" VerticalAlignment="Center"/>
                     <TextBlock FontSize="11" FontWeight="SemiBold" Width="18" TextAlignment="Left"
-                               Foreground="{DynamicResource App.TextMuted}" VerticalAlignment="Center">
+                               Foreground="{DynamicResource App.Accent}" VerticalAlignment="Center">
                         <TextBlock.Triggers>
                             <EventTrigger RoutedEvent="FrameworkElement.Loaded">
                                 <BeginStoryboard>
