@@ -37,6 +37,22 @@ For the full description of EDI's engine, gallery system, variants, multi-axis /
 
 ---
 
+## File layout
+
+How the launcher, per-game folders, and the save-data dir relate. Click for full size, or grab [`docs/file-layout.svg`](docs/file-layout.svg) for crisp zoom-anywhere.
+
+![EDI Community Mod — file layout reference](docs/file-layout.png)
+
+Quick rules baked into the diagram:
+
+- **`EdiConfig.json` is optional per game** — class defaults take over when absent; the file is lazily created only when a per-game setting actually saves.
+- **Gallery grouping** — files sharing a base name (e.g. `scene1.funscript` + `scene1.pitch.funscript`) form one gallery; the FM converter and multi-axis playback both treat them as a unit.
+- **Icon resolution chain** — first hit wins: `IconPath` → `desktop.ini` IconResource → loose `folder.ico` / `icon.ico` / `_folder.ico` → `.exe` embedded icon → shell jumbo (generic) as last resort.
+- **Per-game cache subfolders** — every download lands in `<OutputDir>\{covers|icons}\<safe-name>\` so re-fetches accumulate variants and Browse pickers can list every one.
+- **Portable mode** — flips `<OutputDir>` to `GAME\EDI\Data\` so the whole launcher + its save data can travel on a USB stick.
+
+---
+
 ## Requirements
 
 - **Windows 10/11 (x64)**

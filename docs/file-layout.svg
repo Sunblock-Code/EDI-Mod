@@ -1,0 +1,422 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1240" font-family="Segoe UI, Inter, sans-serif">
+  <!-- ============================================================
+       EDI — file layout tutorial
+       Tree diagram showing how the LAUNCHER, per-game folders,
+       and the SAVE-DATA dir relate. Colors match the EDI UI.
+       ============================================================ -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#11141B"/>
+      <stop offset="1" stop-color="#0B0D13"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FF74B7"/>
+      <stop offset="1" stop-color="#FF2D8C"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1F2330"/>
+      <stop offset="1" stop-color="#161924"/>
+    </linearGradient>
+    <linearGradient id="cardLauncher" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A1722"/>
+      <stop offset="1" stop-color="#161924"/>
+    </linearGradient>
+    <linearGradient id="cardGame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#13202C"/>
+      <stop offset="1" stop-color="#161924"/>
+    </linearGradient>
+    <linearGradient id="cardOut" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1D2520"/>
+      <stop offset="1" stop-color="#161924"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5"/>
+      <feOffset dy="3"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.45"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- Tiny "folder" pictogram (cyan) -->
+    <symbol id="folder" viewBox="0 0 20 16">
+      <path d="M1 4 V13 C1 14 2 15 3 15 H17 C18 15 19 14 19 13 V5 C19 4 18 3 17 3 H10 L8 1 H3 C2 1 1 2 1 4 Z"
+            fill="#3DD0FF" opacity="0.85"/>
+      <path d="M1 6 H19" stroke="#0B1218" stroke-width="0.8" fill="none"/>
+    </symbol>
+    <!-- "File" pictogram (pale) -->
+    <symbol id="file" viewBox="0 0 20 16">
+      <path d="M3 1 H12 L17 6 V14 C17 15 16 15 15 15 H4 C3 15 3 14 3 14 Z" fill="#D6DAE2" opacity="0.85"/>
+      <path d="M12 1 V6 H17" fill="none" stroke="#0B1218" stroke-width="0.7"/>
+    </symbol>
+    <!-- "Optional" pictogram — dashed folder -->
+    <symbol id="folderOpt" viewBox="0 0 20 16">
+      <path d="M1 4 V13 C1 14 2 15 3 15 H17 C18 15 19 14 19 13 V5 C19 4 18 3 17 3 H10 L8 1 H3 C2 1 1 2 1 4 Z"
+            fill="none" stroke="#8B96A5" stroke-width="0.9" stroke-dasharray="1.6 1.6" opacity="0.95"/>
+    </symbol>
+    <!-- "Pink dot" pictogram for headline files -->
+    <symbol id="exeDot" viewBox="0 0 20 16">
+      <circle cx="10" cy="8" r="5" fill="url(#accent)" filter="url(#glow)"/>
+    </symbol>
+  </defs>
+
+  <!-- Page background + outer card -->
+  <rect width="100%" height="100%" fill="url(#bg)"/>
+
+  <!-- ===== Header ===== -->
+  <g transform="translate(60 40)">
+    <rect x="0" y="0" width="6" height="74" rx="3" fill="url(#accent)" filter="url(#glow)"/>
+    <text x="22" y="36" font-size="34" font-weight="700" fill="#FFFFFF" letter-spacing="0.5">EDI — file layout</text>
+    <text x="22" y="64" font-size="14" fill="#A6B0C3" font-weight="400">
+      Where the launcher, per-game folders, and the save-data dir live. Dashed boxes = optional / lazily created.
+    </text>
+  </g>
+
+  <!-- Optional legend pill, top-right -->
+  <g transform="translate(1100 50)">
+    <rect x="0" y="0" width="440" height="56" rx="10" fill="#1A1E2A" stroke="#2A3142"/>
+    <g transform="translate(14 12)">
+      <use href="#folder" width="22" height="18" x="0" y="6"/>
+      <text x="30" y="20" fill="#D6DAE2" font-size="12">Folder</text>
+
+      <use href="#file" width="22" height="18" x="92" y="6"/>
+      <text x="122" y="20" fill="#D6DAE2" font-size="12">File</text>
+
+      <use href="#folderOpt" width="22" height="18" x="172" y="6"/>
+      <text x="202" y="20" fill="#A6B0C3" font-size="12" font-style="italic">Optional</text>
+
+      <use href="#exeDot" width="22" height="18" x="278" y="6"/>
+      <text x="308" y="20" fill="#FF74B7" font-size="12" font-weight="600">Key entry point</text>
+    </g>
+  </g>
+
+  <!-- ===== Three columns of cards ===== -->
+
+  <!-- 1. LAUNCHER -->
+  <g transform="translate(60 160)">
+    <rect width="480" height="1020" rx="18" fill="url(#cardLauncher)" stroke="#3A1A2A" filter="url(#softShadow)"/>
+    <g transform="translate(0 0)">
+      <rect x="0" y="0" width="480" height="60" rx="18" fill="#2A1722"/>
+      <rect x="0" y="42" width="480" height="18" fill="#2A1722"/>
+      <text x="22" y="38" font-size="14" font-weight="700" fill="#FF74B7" letter-spacing="2">LAUNCHER</text>
+      <text x="22" y="78" font-size="20" font-weight="700" fill="#FFFFFF">GAME\EDI\</text>
+      <text x="22" y="100" font-size="12" fill="#A6B0C3">The deployed launcher — the only thing you copy from publish.</text>
+    </g>
+
+    <g transform="translate(28 130)" font-size="13" fill="#D6DAE2">
+      <!-- Vertical guide line -->
+      <line x1="6" y1="0" x2="6" y2="780" stroke="#3A1A2A" stroke-width="1"/>
+
+      <g transform="translate(0 6)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#3A1A2A"/>
+        <use href="#exeDot" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" font-weight="700" fill="#FFFFFF">Edi.exe</text>
+        <text x="50" y="32" font-size="11" fill="#7E8A9C">Single-file framework-dependent .NET 8 build</text>
+      </g>
+
+      <g transform="translate(0 64)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#3A1A2A"/>
+        <use href="#file" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14">Edi.exe.prev</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Auto-backup made on every deploy — rollback path</text>
+      </g>
+
+      <g transform="translate(0 118)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#3A1A2A"/>
+        <use href="#file" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14">EdiConfig.json</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Launcher-side defaults (Devices / Gallery / etc.)</text>
+      </g>
+
+      <g transform="translate(0 172)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#3A1A2A"/>
+        <use href="#file" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14">EdiAppSettings.json</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">AppLocalSettings — QuickPrograms, layout, toggles, profiles</text>
+      </g>
+
+      <g transform="translate(0 226)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#3A1A2A"/>
+        <use href="#file" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14">EdiDockLayout.config</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Saved AvalonDock pane positions</text>
+      </g>
+
+      <g transform="translate(0 280)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#3A1A2A"/>
+        <use href="#file" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" fill="#A6B0C3">Edi.ico, *.deps.json, *.runtimeconfig.json</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Required runtime assets bundled with the publish</text>
+      </g>
+
+      <g transform="translate(0 334)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#3A1A2A"/>
+        <use href="#folderOpt" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" fill="#A6B0C3" font-style="italic">FunscriptPlayer\</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Optional player folder for "Script Player" games</text>
+      </g>
+
+      <g transform="translate(0 388)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#3A1A2A"/>
+        <use href="#folderOpt" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" fill="#A6B0C3" font-style="italic">Data\</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Only if "Portable data" is on — redirects OutputDir here</text>
+      </g>
+
+      <!-- Note callout -->
+      <g transform="translate(0 458)">
+        <rect x="0" y="0" width="424" height="86" rx="10" fill="#1D1117" stroke="#3A1A2A"/>
+        <rect x="0" y="0" width="4" height="86" rx="2" fill="url(#accent)"/>
+        <text x="16" y="22" font-size="12" font-weight="700" fill="#FFB0CF">Deploy rule</text>
+        <text x="16" y="44" font-size="12" fill="#D6DAE2"><tspan font-weight="600">Edi.exe</tspan> is the only file overwritten on deploy.</text>
+        <text x="16" y="62" font-size="12" fill="#D6DAE2">The settings JSONs persist across builds — they're</text>
+        <text x="16" y="78" font-size="12" fill="#D6DAE2">how your toggles survive every update.</text>
+      </g>
+
+      <!-- Source repo note -->
+      <g transform="translate(0 580)">
+        <rect x="0" y="0" width="424" height="160" rx="10" fill="#161924" stroke="#26313F"/>
+        <text x="16" y="22" font-size="12" font-weight="700" fill="#7DD3FC" letter-spacing="1">SOURCE</text>
+        <text x="16" y="44" font-size="14" font-weight="700" fill="#FFFFFF">GAME\EDI_SRC\</text>
+        <text x="16" y="64" font-size="11" fill="#A6B0C3">The code repo — only this folder is pushed to GitHub.</text>
+
+        <use href="#folder" width="18" height="14" x="18" y="78"/>
+        <text x="44" y="91" font-size="12" fill="#D6DAE2">Edi.Core\         <tspan fill="#7E8A9C">cross-platform .NET 8 library</tspan></text>
+
+        <use href="#folder" width="18" height="14" x="18" y="100"/>
+        <text x="44" y="113" font-size="12" fill="#D6DAE2">Edi.Wpf\           <tspan fill="#7E8A9C">Windows WPF UI</tspan></text>
+
+        <use href="#folderOpt" width="18" height="14" x="18" y="122"/>
+        <text x="44" y="135" font-size="12" fill="#A6B0C3" font-style="italic">_deploy_publish\  <tspan fill="#7E8A9C">ignored by git, publish output</tspan></text>
+      </g>
+    </g>
+  </g>
+
+  <!-- 2. PER-GAME -->
+  <g transform="translate(560 160)">
+    <rect width="480" height="1020" rx="18" fill="url(#cardGame)" stroke="#1B2C40" filter="url(#softShadow)"/>
+    <g transform="translate(0 0)">
+      <rect x="0" y="0" width="480" height="60" rx="18" fill="#13202C"/>
+      <rect x="0" y="42" width="480" height="18" fill="#13202C"/>
+      <text x="22" y="38" font-size="14" font-weight="700" fill="#3DD0FF" letter-spacing="2">PER-GAME FOLDER</text>
+      <text x="22" y="78" font-size="20" font-weight="700" fill="#FFFFFF">&lt;Games Location&gt;\&lt;game&gt;\</text>
+      <text x="22" y="100" font-size="12" fill="#A6B0C3">Shape every game follows. Dashed = optional / lazy.</text>
+    </g>
+
+    <g transform="translate(28 130)" font-size="13" fill="#D6DAE2">
+      <line x1="6" y1="0" x2="6" y2="800" stroke="#1B2C40" stroke-width="1"/>
+
+      <g transform="translate(0 6)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#1B2C40"/>
+        <use href="#exeDot" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" font-weight="700" fill="#FFFFFF">&lt;game&gt;.exe</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Pointed at by GameInfo.ExePath — LAUNCH GAME runs this</text>
+      </g>
+
+      <g transform="translate(0 64)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#1B2C40"/>
+        <use href="#folderOpt" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" fill="#A6B0C3" font-style="italic">EdiConfig.json</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Optional. Lazily created only when a per-game setting is</text>
+        <text x="50" y="46" font-size="11" fill="#7E8A9C">actually saved. Class defaults take over when absent.</text>
+      </g>
+
+      <g transform="translate(0 134)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#1B2C40"/>
+        <use href="#folder" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" font-weight="700">Gallery\</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">EDI's playback source. Files sharing a base name form one</text>
+        <text x="50" y="46" font-size="11" fill="#7E8A9C">gallery group (axis variants for the FM converter etc.).</text>
+
+        <g transform="translate(28 56)" font-size="12" fill="#D6DAE2">
+          <line x1="6" y1="0" x2="6" y2="80" stroke="#1B2C40"/>
+          <line x1="6" y1="14" x2="22" y2="14" stroke="#1B2C40"/>
+          <use href="#file" width="18" height="14" x="22" y="6"/>
+          <text x="48" y="18">scene1.funscript</text>
+
+          <line x1="6" y1="40" x2="22" y2="40" stroke="#1B2C40"/>
+          <use href="#file" width="18" height="14" x="22" y="32"/>
+          <text x="48" y="44">scene1.pitch.funscript     <tspan fill="#7E8A9C">← axis variant</tspan></text>
+
+          <line x1="6" y1="66" x2="22" y2="66" stroke="#1B2C40"/>
+          <use href="#file" width="18" height="14" x="22" y="58"/>
+          <text x="48" y="70">scene1.roll.funscript      <tspan fill="#7E8A9C">← axis variant</tspan></text>
+        </g>
+      </g>
+
+      <g transform="translate(0 296)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#1B2C40"/>
+        <use href="#folderOpt" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" fill="#A6B0C3" font-style="italic">media\</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Drop any .mp4 / .gif here — cards auto-play one on hover</text>
+        <text x="50" y="46" font-size="11" fill="#7E8A9C">when the game has no explicit cover video set.</text>
+      </g>
+
+      <g transform="translate(0 370)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#1B2C40"/>
+        <use href="#folderOpt" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" fill="#A6B0C3" font-style="italic">desktop.ini</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">If you've customized the folder's Windows icon</text>
+        <text x="50" y="46" font-size="11" fill="#7E8A9C">(Properties → Customize → Change Icon).</text>
+      </g>
+
+      <g transform="translate(0 444)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#1B2C40"/>
+        <use href="#folderOpt" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" fill="#A6B0C3" font-style="italic">folder.ico  /  icon.ico  /  _folder.ico</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Loose icon conventions — "Use folder icon" picks any of these.</text>
+      </g>
+
+      <g transform="translate(0 504)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#1B2C40"/>
+        <use href="#folderOpt" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" fill="#A6B0C3" font-style="italic">Edi.exe</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Per-game embedded EDI host (the game's wrapper script</text>
+        <text x="50" y="46" font-size="11" fill="#7E8A9C">orchestrates this — not the same exe as the launcher).</text>
+      </g>
+
+      <!-- Icon resolution chain callout -->
+      <g transform="translate(0 580)">
+        <rect x="0" y="0" width="424" height="160" rx="10" fill="#101822" stroke="#1B2C40"/>
+        <rect x="0" y="0" width="4" height="160" rx="2" fill="#3DD0FF"/>
+        <text x="16" y="22" font-size="12" font-weight="700" fill="#7DD3FC">Icon resolution chain</text>
+        <text x="16" y="42" font-size="11" fill="#A6B0C3">First hit wins (right-click → Icon → Use folder icon):</text>
+        <text x="16" y="64"  font-size="12" fill="#D6DAE2"><tspan fill="#FF74B7" font-weight="700">1.</tspan>  GameInfo.IconPath (explicitly set)</text>
+        <text x="16" y="84"  font-size="12" fill="#D6DAE2"><tspan fill="#FF74B7" font-weight="700">2.</tspan>  desktop.ini IconResource (largest .ico frame)</text>
+        <text x="16" y="104" font-size="12" fill="#D6DAE2"><tspan fill="#FF74B7" font-weight="700">3.</tspan>  Loose folder.ico / icon.ico / _folder.ico</text>
+        <text x="16" y="124" font-size="12" fill="#D6DAE2"><tspan fill="#FF74B7" font-weight="700">4.</tspan>  Embedded icon of &lt;game&gt;.exe</text>
+        <text x="16" y="144" font-size="12" fill="#7E8A9C"><tspan fill="#FF74B7" font-weight="700">5.</tspan>  Shell jumbo (generic folder) — last resort</text>
+      </g>
+
+      <!-- Gallery rule -->
+      <g transform="translate(0 770)">
+        <rect x="0" y="0" width="424" height="80" rx="10" fill="#101822" stroke="#1B2C40"/>
+        <rect x="0" y="0" width="4" height="80" rx="2" fill="#3DD0FF"/>
+        <text x="16" y="22" font-size="12" font-weight="700" fill="#7DD3FC">Gallery grouping</text>
+        <text x="16" y="44" font-size="12" fill="#D6DAE2">Files are grouped by the part of the filename BEFORE the</text>
+        <text x="16" y="62" font-size="12" fill="#D6DAE2">first dot. <tspan fill="#FFB0CF">scene1.funscript</tspan> + <tspan fill="#FFB0CF">scene1.pitch.funscript</tspan> = one gallery.</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- 3. SAVE-DATA / OUTPUT -->
+  <g transform="translate(1060 160)">
+    <rect width="480" height="1020" rx="18" fill="url(#cardOut)" stroke="#1F3327" filter="url(#softShadow)"/>
+    <g transform="translate(0 0)">
+      <rect x="0" y="0" width="480" height="60" rx="18" fill="#1D2520"/>
+      <rect x="0" y="42" width="480" height="18" fill="#1D2520"/>
+      <text x="22" y="38" font-size="14" font-weight="700" fill="#7BE0A5" letter-spacing="2">SAVE-DATA  ·  OUTPUT DIR</text>
+      <text x="22" y="78" font-size="20" font-weight="700" fill="#FFFFFF">%LocalAppData%\Edi\</text>
+      <text x="22" y="100" font-size="12" fill="#A6B0C3">Default. Portable mode redirects this to GAME\EDI\Data\.</text>
+    </g>
+
+    <g transform="translate(28 130)" font-size="13" fill="#D6DAE2">
+      <line x1="6" y1="0" x2="6" y2="800" stroke="#1F3327" stroke-width="1"/>
+
+      <g transform="translate(0 6)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#1F3327"/>
+        <use href="#file" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14">UserConfig.json</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">[UserConfig] types — SaveDataLocation, Donations, FmProfiles…</text>
+      </g>
+
+      <g transform="translate(0 64)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#1F3327"/>
+        <use href="#folder" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" font-weight="700">covers\&lt;safe-game-name&gt;\</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Per-game banner cache — accumulates, "Browse covers"</text>
+        <text x="50" y="46" font-size="11" fill="#7E8A9C">lists everything; re-fetches don't overwrite older ones.</text>
+
+        <g transform="translate(28 56)" font-size="12">
+          <line x1="6" y1="0" x2="6" y2="80" stroke="#1F3327"/>
+          <line x1="6" y1="14" x2="22" y2="14" stroke="#1F3327"/>
+          <use href="#file" width="18" height="14" x="22" y="6"/>
+          <text x="48" y="18">cover_01.jpg</text>
+
+          <line x1="6" y1="40" x2="22" y2="40" stroke="#1F3327"/>
+          <use href="#file" width="18" height="14" x="22" y="32"/>
+          <text x="48" y="44">cover_02.png</text>
+
+          <line x1="6" y1="66" x2="22" y2="66" stroke="#1F3327"/>
+          <use href="#file" width="18" height="14" x="22" y="58"/>
+          <text x="48" y="70">video_01.mp4   <tspan fill="#7E8A9C">← DLsite/itch.io clips</tspan></text>
+        </g>
+      </g>
+
+      <g transform="translate(0 230)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#1F3327"/>
+        <use href="#folder" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" font-weight="700">icons\&lt;safe-game-name&gt;\</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Per-game icon cache. Each "Use _" extraction writes here.</text>
+
+        <g transform="translate(28 44)" font-size="12">
+          <line x1="6" y1="0" x2="6" y2="110" stroke="#1F3327"/>
+          <line x1="6" y1="14" x2="22" y2="14" stroke="#1F3327"/>
+          <use href="#file" width="18" height="14" x="22" y="6"/>
+          <text x="48" y="18">_folder.png   <tspan fill="#7E8A9C">← "Use folder icon" output</tspan></text>
+
+          <line x1="6" y1="40" x2="22" y2="40" stroke="#1F3327"/>
+          <use href="#file" width="18" height="14" x="22" y="32"/>
+          <text x="48" y="44">_exe.png       <tspan fill="#7E8A9C">← "Use exe icon" output</tspan></text>
+
+          <line x1="6" y1="66" x2="22" y2="66" stroke="#1F3327"/>
+          <use href="#file" width="18" height="14" x="22" y="58"/>
+          <text x="48" y="70">icon_01.png   <tspan fill="#7E8A9C">← SteamGridDB / DLsite / etc.</tspan></text>
+
+          <line x1="6" y1="92" x2="22" y2="92" stroke="#1F3327"/>
+          <use href="#file" width="18" height="14" x="22" y="84"/>
+          <text x="48" y="96">icon_02.png</text>
+        </g>
+      </g>
+
+      <g transform="translate(0 432)">
+        <line x1="6" y1="10" x2="22" y2="10" stroke="#1F3327"/>
+        <use href="#folder" width="20" height="16" x="22" y="2"/>
+        <text x="50" y="14" font-weight="700">shortcuts\</text>
+        <text x="50" y="30" font-size="11" fill="#7E8A9C">Generated by right-click → Create shortcut. The .lnk itself</text>
+        <text x="50" y="46" font-size="11" fill="#7E8A9C">lands wherever you picked (Desktop by default).</text>
+
+        <g transform="translate(28 56)" font-size="12">
+          <line x1="6" y1="0" x2="6" y2="55" stroke="#1F3327"/>
+          <line x1="6" y1="14" x2="22" y2="14" stroke="#1F3327"/>
+          <use href="#file" width="18" height="14" x="22" y="6"/>
+          <text x="48" y="18">&lt;game&gt;.cmd   <tspan fill="#7E8A9C">← server+client orchestration</tspan></text>
+
+          <line x1="6" y1="40" x2="22" y2="40" stroke="#1F3327"/>
+          <use href="#file" width="18" height="14" x="22" y="32"/>
+          <text x="48" y="44">&lt;game&gt;.ico    <tspan fill="#7E8A9C">← icon embedded in the .lnk</tspan></text>
+        </g>
+      </g>
+
+      <!-- Output-dir rules callout -->
+      <g transform="translate(0 580)">
+        <rect x="0" y="0" width="424" height="160" rx="10" fill="#101A14" stroke="#1F3327"/>
+        <rect x="0" y="0" width="4" height="160" rx="2" fill="#7BE0A5"/>
+        <text x="16" y="22" font-size="12" font-weight="700" fill="#7BE0A5">Where this dir lives</text>
+        <text x="16" y="44" font-size="12" fill="#D6DAE2"><tspan font-weight="600">Default:</tspan>  %LocalAppData%\Edi\</text>
+        <text x="16" y="64" font-size="12" fill="#D6DAE2"><tspan font-weight="600">Portable mode:</tspan>  GAME\EDI\Data\</text>
+        <text x="16" y="84" font-size="12" fill="#D6DAE2"><tspan font-weight="600">Custom path:</tspan>  whatever Settings → Data sets</text>
+        <text x="16" y="114" font-size="11" fill="#A6B0C3">Move-safe — the launcher reads SaveDataLocation from</text>
+        <text x="16" y="130" font-size="11" fill="#A6B0C3">EdiAppSettings.json (next to Edi.exe) before anything</text>
+        <text x="16" y="146" font-size="11" fill="#A6B0C3">else, so portability decisions never require a reinstall.</text>
+      </g>
+
+      <!-- Per-game cache rule -->
+      <g transform="translate(0 770)">
+        <rect x="0" y="0" width="424" height="80" rx="10" fill="#101A14" stroke="#1F3327"/>
+        <rect x="0" y="0" width="4" height="80" rx="2" fill="#7BE0A5"/>
+        <text x="16" y="22" font-size="12" font-weight="700" fill="#7BE0A5">Cache rule</text>
+        <text x="16" y="44" font-size="12" fill="#D6DAE2">Everything fetched lands in a <tspan fill="#A5C3FF">per-game subfolder</tspan>.</text>
+        <text x="16" y="62" font-size="12" fill="#D6DAE2">Old variants stick around so you can swap via Browse.</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Footer -->
+  <g transform="translate(60 1200)">
+    <text font-size="11" fill="#5A6478">EDI Community Mod  ·  github.com/Sunblock-Code/EDI-Mod  ·  open this SVG in any browser for crisp zoom</text>
+  </g>
+</svg>
